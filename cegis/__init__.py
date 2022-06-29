@@ -67,7 +67,11 @@ class Cegis():
     generator_vars: List[z3.ExprRef]
     verifier_vars: List[z3.ExprRef]
     definition_vars: List[z3.ExprRef]
+
+    search_constraints: z3.ExprRef
+    definitions: z3.ExprRef
     specification: z3.ExprRef
+
     ctx: z3.Context
 
     verifier: MySolver
@@ -81,11 +85,13 @@ class Cegis():
     counter_examples = set()
 
     def __init__(self, generator_vars, verifier_vars, definition_vars,
-                 specification, ctx):
+                 search_constraints, definitions, specification, ctx):
         self.generator_vars = generator_vars
         self.verifier_vars = verifier_vars
         self.definition_vars = definition_vars
         self.specification = specification
+        self.definitions = definitions
+        self.search_constraints = search_constraints
         self.ctx = ctx
 
         self.verifier = MySolver(ctx)
@@ -120,16 +126,18 @@ class Cegis():
 
     @staticmethod
     def encode_counter_example(
-            generator: MySolver, specification: z3.ExprRef,
-            counter_example: z3.ModelRef, verifier_vars: List[z3.ExprRef],
-            definition_vars: List[z3.ExprRef],
+            generator: MySolver, definitions: z3.ExprRef,
+            specification: z3.ExprRef, counter_example: z3.ModelRef,
+            verifier_vars: List[z3.ExprRef], definition_vars: List[z3.ExprRef],
             ctx: z3.Context, n_cex: int):
         name_template = "{}__cex" + str(n_cex)
         counter_example_constr = substitute_values(
             verifier_vars, counter_example, name_template, ctx)
-        renamed_spec = rename_vars(
-            specification, verifier_vars + definition_vars, name_template)
-        generator.add(z3.And(counter_example_constr, renamed_spec))
+        constr = z3.And(definitions, specification)
+        assert isinstance(constr, z3.ExprRef)
+        renamed_constr = rename_vars(
+            constr, verifier_vars + definition_vars, name_template)
+        generator.add(z3.And(counter_example_constr, renamed_constr))
 
     @staticmethod
     def get_solution_str(solution: z3.ModelRef,
@@ -162,6 +170,9 @@ class Cegis():
         self.counter_examples.add(cex_str)
 
     def run(self):
+        self.generator.add(self.search_constraints)
+        self.verifier.add(z3.And(self.definitions, z3.Not(self.specification)))
+
         itr = 1
         while(True):
             logger.info("Iteration: {}".format(itr))
@@ -195,8 +206,8 @@ class Cegis():
                 assert counter_qres.model is not None
                 self._bookkeep_cex(counter_qres.model)
                 Cegis.encode_counter_example(
-                    self.generator, self.specification, counter_qres.model,
-                    self.verifier_vars, self.definition_vars, self.ctx,
-                    self._n_counter_examples)
+                    self.generator, self.definitions, self.specification,
+                    counter_qres.model, self.verifier_vars,
+                    self.definition_vars, self.ctx, self._n_counter_examples)
 
             itr += 1
