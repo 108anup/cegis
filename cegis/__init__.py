@@ -11,6 +11,29 @@ logger = logging.getLogger('cegis')
 GlobalConfig().default_logger_setup(logger)
 
 
+class tcolor(bcolors):
+    GENERATOR = bcolors.OKCYAN
+    VERIFIER = bcolors.WARNING
+    CANDIDATESOLUTION = bcolors.BOLD + bcolors.OKBLUE
+    PROVEDSOLUTION = bcolors.BOLD + bcolors.OKGREEN
+
+    @staticmethod
+    def generator(s: str):
+        return tcolor.GENERATOR + s + bcolors.ENDC
+
+    @staticmethod
+    def verifier(s: str):
+        return tcolor.VERIFIER + s + bcolors.ENDC
+
+    @staticmethod
+    def candidate(s: str):
+        return tcolor.CANDIDATESOLUTION + s + bcolors.ENDC
+
+    @staticmethod
+    def proved(s: str):
+        return tcolor.PROVEDSOLUTION + s + bcolors.ENDC
+
+
 def substitute_values(var_list: List[z3.ExprRef], model: z3.ModelRef,
                       name_template: str, ctx: z3.Context) -> z3.ExprRef:
     """
@@ -153,7 +176,7 @@ class Cegis():
         candidate_str = Cegis.get_solution_str(
             candidate_solution, self.generator_vars)
         logger.info("Candidate solution: \n{}".format(
-            bcolors.candidate(candidate_str)))
+            tcolor.candidate(candidate_str)))
         assert candidate_str not in self.candidate_solutions, (
             "Candidate solution repeated")
         self.candidate_solutions.add(candidate_str)
@@ -164,7 +187,7 @@ class Cegis():
         cex_str = Cegis.get_counter_example_str(
             counter_example, self.verifier_vars)
         logger.info("Counter example: \n{}".format(
-            bcolors.verifier(cex_str)))
+            tcolor.verifier(cex_str)))
         assert cex_str not in self.counter_examples, (
             "Counter examples repeated")
         self.counter_examples.add(cex_str)
@@ -181,9 +204,9 @@ class Cegis():
             candidate_qres = Cegis.get_candidate_solution(self.generator)
 
             if(not candidate_qres.is_sat()):
-                logger.info(bcolors.generator("No more solutions found"))
+                logger.info(tcolor.generator("No more solutions found"))
                 logger.info("Final solutions: \n{}",
-                            bcolors.proved("\n".join(self.solutions)))
+                            tcolor.proved("\n".join(self.solutions)))
                 break
 
             # else:
@@ -196,7 +219,7 @@ class Cegis():
 
             if(not counter_qres.is_sat()):
                 logger.info("Proved solution: \n{}".format(
-                    bcolors.proved(candidate_str)))
+                    tcolor.proved(candidate_str)))
                 self.solutions.add(candidate_str)
 
                 remove_solution(self.generator, candidate_qres.model,
