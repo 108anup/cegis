@@ -44,7 +44,7 @@ def substitute_values(var_list: List[z3.ExprRef], model: z3.ModelRef,
     expr_list = []
     for v in var_list:
         name = name_template.format(v.decl().name())
-        expr_list = z3.Const(name, ctx) == model.eval(v)
+        expr_list.append(z3.Const(name, v.sort()) == model.eval(v))
     expr = z3.And(*expr_list)
     assert isinstance(expr, z3.BoolRef)
     return expr
@@ -118,7 +118,9 @@ class Cegis():
         self.ctx = ctx
 
         self.verifier = MySolver(ctx)
+        self.verifier.warn_undeclared = False
         self.generator = MySolver(ctx)
+        self.generator.warn_undeclared = False
 
     @staticmethod
     def get_candidate_solution(generator):
@@ -205,8 +207,8 @@ class Cegis():
 
             if(not candidate_qres.is_sat()):
                 logger.info(tcolor.generator("No more solutions found"))
-                logger.info("Final solutions: \n{}",
-                            tcolor.proved("\n".join(self.solutions)))
+                logger.info("Final solutions: \n{}".format(
+                            tcolor.proved("\n".join(self.solutions))))
                 break
 
             # else:
