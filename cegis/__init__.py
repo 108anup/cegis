@@ -1,9 +1,9 @@
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
 import z3
-
 from pyz3_utils.common import GlobalConfig, bcolors
 from pyz3_utils.my_solver import MySolver
 
@@ -123,8 +123,18 @@ class Cegis():
         self.generator.warn_undeclared = False
 
     @staticmethod
-    def get_candidate_solution(generator):
+    def get_candidate_solution(generator: MySolver):
+        with open('generator.smt2', 'w') as f:
+            f.write(generator.to_smt2())
+
+        import ipdb; ipdb.set_trace()
+
+        start = time.time()
         sat = generator.check()
+        end = time.time()
+        logger.info("Generator returned {} in {:.6f} secs.".format(
+            sat, end - start))
+
         model = None
         if(str(sat) == "sat"):
             model = generator.model()
@@ -141,7 +151,12 @@ class Cegis():
             generator_vars, candidate_solution, "{}", ctx)
         verifier.add(candidate_solution_constr)
 
+        start = time.time()
         sat = verifier.check()
+        end = time.time()
+        logger.info("Verifer returned {} in {:.6f} secs.".format(
+            sat, end - start))
+
         model = None
         if(str(sat) == "sat"):
             model = verifier.model()
@@ -166,16 +181,16 @@ class Cegis():
 
     @staticmethod
     def get_solution_str(solution: z3.ModelRef,
-                         generator_vars: List[z3.ExprRef]):
+                         generator_vars: List[z3.ExprRef]) -> str:
         return get_model_hash(solution, generator_vars)
 
     @staticmethod
     def get_counter_example_str(counter_example: z3.ModelRef,
-                                verifier_vars: List[z3.ExprRef]):
+                                verifier_vars: List[z3.ExprRef]) -> str:
         return get_model_hash(counter_example, verifier_vars)
 
     def _bookkeep_cs(self, candidate_solution: z3.ModelRef):
-        candidate_str = Cegis.get_solution_str(
+        candidate_str = self.get_solution_str(
             candidate_solution, self.generator_vars)
         logger.info("Candidate solution: \n{}".format(
             tcolor.candidate(candidate_str)))
@@ -186,7 +201,7 @@ class Cegis():
 
     def _bookkeep_cex(self, counter_example: z3.ModelRef):
         self._n_counter_examples += 1
-        cex_str = Cegis.get_counter_example_str(
+        cex_str = self.get_counter_example_str(
             counter_example, self.verifier_vars)
         logger.info("Counter example: \n{}".format(
             tcolor.verifier(cex_str)))

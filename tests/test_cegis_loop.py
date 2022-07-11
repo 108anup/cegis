@@ -17,8 +17,11 @@ def test_without_ve():
     definition_vars = []
 
     search_constraints = z3.And(v >= 0, v <= 10)
-    definitions = z3.And(z3.And(x >= 0, x <= 10), z3.And(y >= 0, y <= 10))
-    specification = z3.Implies(z3.And(2 * y == v, x < y), x == 0)
+    vdomain = z3.And(z3.And(x >= 0, x <= 10), z3.And(y >= 0, y <= 10))
+    definitions = True
+    environment = z3.And(2 * y == v, x < y)
+    desired = x == 0
+    specification = z3.Implies(z3.And(vdomain, environment), desired)
 
     ctx = z3.main_ctx()
     cg = Cegis(generator_vars, verifier_vars, definition_vars,
