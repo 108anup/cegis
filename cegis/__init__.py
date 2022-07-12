@@ -145,6 +145,23 @@ class Cegis():
         with open('verifier.txt', 'w') as f:
             f.write(verifier.assertions().sexpr())
 
+        # simplify_solver(
+        #     self.verifier, z3.Tactic('propagate-values'),
+        #     "_verifier_pv")
+
+        # simplify_solver(
+        #     self.verifier,
+        #     z3.Then(z3.Tactic('propagate-values'),
+        #             z3.Tactic('simplify')),
+        #     "_verifier_pv_s")
+
+        # simplify_solver(
+        #     self.verifier,
+        #     z3.Then(z3.Then(
+        #         z3.Tactic('propagate-values'), z3.Tactic('simplify')),
+        #         z3.Tactic('solve-eqs')),
+        #     "_verifier_pv_s_seq")
+
         # import ipdb; ipdb.set_trace()
 
         start = time.time()
@@ -221,7 +238,9 @@ class Cegis():
 
                 end = time.time()
                 logger.info("Took {:.6f} secs.".format(end - start))
-                # simplify_solver(self.generator)
+                # simplify_solver(
+                #     self.generator, z3.Tactic('propagate-values'),
+                #     "_generator")
                 # import ipdb; ipdb.set_trace()
                 break
 
