@@ -165,7 +165,7 @@ class Cegis():
         # import ipdb; ipdb.set_trace()
 
         start = time.time()
-        sat, model = self.run_verifier(verifier)
+        sat, model = self.run_verifier(verifier=verifier)
         end = time.time()
         logger.info("Verifer returned {} in {:.6f} secs.".format(
             sat, end - start))
