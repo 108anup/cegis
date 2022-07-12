@@ -122,16 +122,10 @@ class Cegis():
     def run_verifier(
         verifier
     ) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
-        start = time.time()
         sat = verifier.check()
-        end = time.time()
-        logger.info("Verifer returned {} in {:.6f} secs.".format(
-            sat, end - start))
-
         model = None
         if(str(sat) == "sat"):
             model = verifier.model()
-
         return sat, model
 
     def get_counter_example(
@@ -148,7 +142,16 @@ class Cegis():
         with open('verifier.smt2', 'w') as f:
             f.write(verifier.to_smt2())
 
+        with open('verifier.txt', 'w') as f:
+            f.write(verifier.assertions().sexpr())
+
+        # import ipdb; ipdb.set_trace()
+
+        start = time.time()
         sat, model = self.run_verifier(verifier)
+        end = time.time()
+        logger.info("Verifer returned {} in {:.6f} secs.".format(
+            sat, end - start))
 
         verifier.pop()
         return QueryResult(sat, model, None)
@@ -199,6 +202,7 @@ class Cegis():
         self.counter_examples.add(cex_str)
 
     def run(self):
+        start = time.time()
         self.generator.add(self.search_constraints)
         self.verifier.add(z3.And(self.definitions, z3.Not(self.specification)))
 
@@ -211,8 +215,12 @@ class Cegis():
 
             if(not candidate_qres.is_sat()):
                 logger.info(tcolor.generator("No more solutions found"))
-                logger.info("Final solutions: \n{}".format(
-                            tcolor.proved("\n".join(self.solutions))))
+                logger.info("Final solutions:")
+                for sid, solution in enumerate(self.solutions):
+                    logger.info("{}: {}".format(sid, tcolor.proved(solution)))
+
+                end = time.time()
+                logger.info("Took {:.6f} secs.".format(end - start))
                 # simplify_solver(self.generator)
                 # import ipdb; ipdb.set_trace()
                 break
