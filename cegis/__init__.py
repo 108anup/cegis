@@ -1,37 +1,17 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 import z3
-from pyz3_utils.common import GlobalConfig, bcolors
+from pyz3_utils.common import GlobalConfig
 from pyz3_utils.my_solver import MySolver
+
+from .util import simplify_solver, tcolor
+
 
 logger = logging.getLogger('cegis')
 GlobalConfig().default_logger_setup(logger)
-
-
-class tcolor(bcolors):
-    GENERATOR = bcolors.OKCYAN
-    VERIFIER = bcolors.WARNING
-    CANDIDATESOLUTION = bcolors.BOLD + bcolors.OKBLUE
-    PROVEDSOLUTION = bcolors.BOLD + bcolors.OKGREEN
-
-    @staticmethod
-    def generator(s: str):
-        return tcolor.GENERATOR + s + bcolors.ENDC
-
-    @staticmethod
-    def verifier(s: str):
-        return tcolor.VERIFIER + s + bcolors.ENDC
-
-    @staticmethod
-    def candidate(s: str):
-        return tcolor.CANDIDATESOLUTION + s + bcolors.ENDC
-
-    @staticmethod
-    def proved(s: str):
-        return tcolor.PROVEDSOLUTION + s + bcolors.ENDC
 
 
 def substitute_values(var_list: List[z3.ExprRef], model: z3.ModelRef,
@@ -127,8 +107,6 @@ class Cegis():
         with open('generator.smt2', 'w') as f:
             f.write(generator.to_smt2())
 
-        import ipdb; ipdb.set_trace()
-
         start = time.time()
         sat = generator.check()
         end = time.time()
@@ -141,16 +119,9 @@ class Cegis():
         return QueryResult(sat, model, None)
 
     @staticmethod
-    def get_counter_example(
-            verifier: MySolver, candidate_solution: z3.ModelRef,
-            generator_vars: List[z3.ExprRef], ctx: z3.Context):
-        verifier.push()
-
-        # Encode candidate solution
-        candidate_solution_constr = substitute_values(
-            generator_vars, candidate_solution, "{}", ctx)
-        verifier.add(candidate_solution_constr)
-
+    def run_verifier(
+        verifier
+    ) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
         start = time.time()
         sat = verifier.check()
         end = time.time()
@@ -160,6 +131,24 @@ class Cegis():
         model = None
         if(str(sat) == "sat"):
             model = verifier.model()
+
+        return sat, model
+
+    def get_counter_example(
+            self,
+            verifier: MySolver, candidate_solution: z3.ModelRef,
+            generator_vars: List[z3.ExprRef], ctx: z3.Context):
+        verifier.push()
+
+        # Encode candidate solution
+        candidate_solution_constr = substitute_values(
+            generator_vars, candidate_solution, "{}", ctx)
+        verifier.add(candidate_solution_constr)
+
+        with open('verifier.smt2', 'w') as f:
+            f.write(verifier.to_smt2())
+
+        sat, model = self.run_verifier(verifier)
 
         verifier.pop()
         return QueryResult(sat, model, None)
@@ -224,13 +213,15 @@ class Cegis():
                 logger.info(tcolor.generator("No more solutions found"))
                 logger.info("Final solutions: \n{}".format(
                             tcolor.proved("\n".join(self.solutions))))
+                # simplify_solver(self.generator)
+                # import ipdb; ipdb.set_trace()
                 break
 
             # else:
             # Verifier
             assert candidate_qres.model is not None
             candidate_str = self._bookkeep_cs(candidate_qres.model)
-            counter_qres = Cegis.get_counter_example(
+            counter_qres = self.get_counter_example(
                 self.verifier, candidate_qres.model,
                 self.generator_vars, self.ctx)
 
