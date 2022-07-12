@@ -14,6 +14,9 @@ logger = logging.getLogger('cegis')
 GlobalConfig().default_logger_setup(logger)
 
 
+NAME_TEMPLATE = "{}__cex"
+
+
 def substitute_values(var_list: List[z3.ExprRef], model: z3.ModelRef,
                       name_template: str, ctx: z3.Context) -> z3.ExprRef:
     """
@@ -179,7 +182,7 @@ class Cegis():
             specification: z3.ExprRef, counter_example: z3.ModelRef,
             verifier_vars: List[z3.ExprRef], definition_vars: List[z3.ExprRef],
             ctx: z3.Context, n_cex: int):
-        name_template = "{}__cex" + str(n_cex)
+        name_template = NAME_TEMPLATE + str(n_cex)
         counter_example_constr = substitute_values(
             verifier_vars, counter_example, name_template, ctx)
         constr = z3.And(definitions, specification)
@@ -190,7 +193,8 @@ class Cegis():
 
     @staticmethod
     def get_solution_str(solution: z3.ModelRef,
-                         generator_vars: List[z3.ExprRef]) -> str:
+                         generator_vars: List[z3.ExprRef],
+                         n_cex: int) -> str:
         return get_model_hash(solution, generator_vars)
 
     @staticmethod
@@ -200,7 +204,7 @@ class Cegis():
 
     def _bookkeep_cs(self, candidate_solution: z3.ModelRef):
         candidate_str = self.get_solution_str(
-            candidate_solution, self.generator_vars)
+            candidate_solution, self.generator_vars, self._n_counter_examples)
         logger.info("Candidate solution: \n{}".format(
             tcolor.candidate(candidate_str)))
         assert candidate_str not in self.candidate_solutions, (
@@ -225,6 +229,7 @@ class Cegis():
 
         itr = 1
         while(True):
+            logger.info("-"*80)
             logger.info("Iteration: {}".format(itr))
 
             # Generator
