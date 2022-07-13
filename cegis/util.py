@@ -4,6 +4,15 @@ from pyz3_utils.common import bcolors
 from pyz3_utils.my_solver import MySolver
 
 
+def get_raw_value(expr: z3.ExprRef):
+    if(isinstance(expr, z3.RatNumRef)):
+        return expr.as_fraction()
+    elif(isinstance(expr, z3.BoolRef)):
+        return bool(expr)
+    else:
+        raise NotImplementedError
+
+
 def write_solver(solver: MySolver, filename: str):
     with open(filename + '.smt2', 'w') as f:
         f.write(solver.to_smt2())
@@ -62,3 +71,7 @@ class tcolor(bcolors):
     @staticmethod
     def proved(s: str):
         return tcolor.PROVEDSOLUTION + s + bcolors.ENDC
+
+    @staticmethod
+    def error(s: str):
+        return bcolors.FAIL + s + bcolors.ENDC

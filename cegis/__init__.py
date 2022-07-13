@@ -1,14 +1,14 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import z3
 from pyz3_utils.common import GlobalConfig
 from pyz3_utils.my_solver import MySolver
 
-from .util import simplify_solver, tcolor, write_solver, unroll_assertions
-
+from .util import (get_raw_value, simplify_solver, tcolor, unroll_assertions,
+                   write_solver)
 
 logger = logging.getLogger('cegis')
 GlobalConfig().default_logger_setup(logger)
@@ -36,6 +36,10 @@ def substitute_values(var_list: List[z3.ExprRef], model: z3.ModelRef,
 def rename_vars(
         expr: z3.ExprRef, var_list: List[z3.ExprRef],
         name_template: str):
+    """
+    For variables in var_list, rename their occerence in expr
+    using provided name_template.
+    """
     substitutions = []
     for v in var_list:
         new_name = name_template.format(v.decl().name())
@@ -91,6 +95,8 @@ class Cegis():
 
     counter_examples = set()
     counter_example_models: List[z3.ModelRef] = list()
+
+    cex_for_cs: Dict[str, int] = dict()
 
     def __init__(
             self, generator_vars: List[z3.ExprRef],
@@ -272,15 +278,76 @@ class Cegis():
                                 verifier_vars: List[z3.ExprRef]) -> str:
         return get_model_hash(counter_example, verifier_vars)
 
+    @staticmethod
+    def get_verifier_view(
+            counter_example: z3.ModelRef, verifier_vars: List[z3.ExprRef],
+            definition_vars: List[z3.ExprRef]) -> str:
+        return get_model_hash(counter_example, verifier_vars + definition_vars)
+
+    @staticmethod
+    def get_generator_view(
+            solution: z3.ModelRef, generator_vars: List[z3.ExprRef],
+            definition_vars: List[z3.ExprRef], n_cex: int) -> str:
+        renamed_definition_vars = []
+        name_template = NAME_TEMPLATE + str(n_cex)
+        for def_var in definition_vars:
+            renamed_var = z3.Const(
+                name_template.format(def_var.decl().name), def_var.sort())
+            renamed_definition_vars.append(renamed_var)
+        return get_model_hash(
+            solution, generator_vars + renamed_definition_vars)
+
+    def log_solution_repeated_views(
+            self, candidate_solution: z3.ModelRef, candidate_str: str):
+        """
+        Currently human is verifying if all definition vars have same
+        value in generator/verifier view.
+        TODO: We can actually do this check automatically.
+        """
+        logger.info("="*80)
+        logger.info("Debugging solution repeat")
+        old_n_cex = self.cex_for_cs[candidate_str]
+        old_counter_example = self.counter_example_models[old_n_cex-1]
+
+        vview = self.get_verifier_view(
+            old_counter_example, self.verifier_vars,
+            self.definition_vars)
+        logger.info("Verifer view of repeat solution:\n{}"
+                    .format(tcolor.verifier(vview)))
+
+        gview = self.get_generator_view(
+            candidate_solution, self.generator_vars,
+            self.definition_vars, old_n_cex)
+        logger.info("Generator view of repeat solution:\n{}"
+                    .format(tcolor.generator(gview)))
+
+        name_template = NAME_TEMPLATE + str(old_n_cex)
+        differing_vars = []
+        for dvar in self.definition_vars:
+            gvar = z3.Const(
+                name_template.format(dvar.decl().name()), dvar.sort())
+            gval = get_raw_value(candidate_solution.eval(gvar))
+            vval = get_raw_value(old_counter_example.eval(dvar))
+            if(gval != vval):
+                differing_vars.append(dvar.decl().name())
+        logger.info(tcolor.error(
+            "Views differ for: {}".format(differing_vars)))
+
     def _bookkeep_cs(self, candidate_solution: z3.ModelRef):
         candidate_str = self.get_solution_str(
             candidate_solution, self.generator_vars, self._n_counter_examples)
         logger.info("Candidate solution: \n{}".format(
             tcolor.candidate(candidate_str)))
-        assert candidate_str not in self.candidate_solutions, (
-            "Candidate solution repeated")
-        self.candidate_solutions.add(candidate_str)
-        return candidate_str
+        if(candidate_str in self.candidate_solutions):
+            logger.error("Candidate solution repeated")
+            self.log_solution_repeated_views(candidate_solution, candidate_str)
+            assert False
+        else:
+            self.candidate_solutions.add(candidate_str)
+            # This is the counter example number that will be used
+            # for the counter example that breaks this candidate_str
+            self.cex_for_cs[candidate_str] = self._n_counter_examples + 1
+            return candidate_str
 
     def _bookkeep_cex(self, counter_example: z3.ModelRef):
         self._n_counter_examples += 1
