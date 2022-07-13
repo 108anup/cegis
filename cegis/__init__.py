@@ -7,7 +7,7 @@ import z3
 from pyz3_utils.common import GlobalConfig
 from pyz3_utils.my_solver import MySolver
 
-from .util import simplify_solver, tcolor
+from .util import simplify_solver, tcolor, write_solver, unroll_assertions
 
 
 logger = logging.getLogger('cegis')
@@ -77,6 +77,7 @@ class Cegis():
     search_constraints: z3.ExprRef
     definitions: z3.ExprRef
     specification: z3.ExprRef
+    known_solution: Optional[z3.ExprRef]
 
     ctx: z3.Context
 
@@ -89,9 +90,14 @@ class Cegis():
     solutions = set()
 
     counter_examples = set()
+    counter_example_models: List[z3.ModelRef] = list()
 
-    def __init__(self, generator_vars, verifier_vars, definition_vars,
-                 search_constraints, definitions, specification, ctx):
+    def __init__(
+            self, generator_vars: List[z3.ExprRef],
+            verifier_vars: List[z3.ExprRef],
+            definition_vars: List[z3.ExprRef], search_constraints: z3.ExprRef,
+            definitions: z3.ExprRef, specification: z3.ExprRef,
+            ctx: z3.Context, known_solution: Optional[z3.ExprRef] = None):
         self.generator_vars = generator_vars
         self.verifier_vars = verifier_vars
         self.definition_vars = definition_vars
@@ -99,16 +105,84 @@ class Cegis():
         self.definitions = definitions
         self.search_constraints = search_constraints
         self.ctx = ctx
+        self.known_solution = known_solution
 
         self.verifier = MySolver(ctx)
         self.verifier.warn_undeclared = False
         self.generator = MySolver(ctx)
         self.generator.warn_undeclared = False
 
+    def check_known_solution(self):
+        if(self.known_solution is None or len(self.solutions) > 0):
+            return
+
+        dummy_generator = MySolver()
+        dummy_generator.warn_undeclared = False
+        assertions = self.generator.assertion_list
+        dummy_generator.add(z3.And(*assertions))
+        dummy_generator.add(self.known_solution)
+
+        sat = dummy_generator.check()
+        if(str(sat) != "sat"):
+            logger.error("Known solution does not satisfy cex")
+
+            # Check what happens under known solution for the last cex
+            last_cex = None
+            if(len(self.counter_examples) > 0):
+                last_cex = self.counter_example_models[-1]
+
+            if(last_cex is None):
+                logger.error("Known solution is not in search space")
+            else:
+                simulator = MySolver()
+                simulator.warn_undeclared = False
+                simulator.add(self.search_constraints)
+                simulator.add(self.known_solution)
+                n_cex = 1
+
+                # Just see what happens if we try to satisfy
+                # all defintions under the counter example.
+                # We don't care about the specification in the simulation
+
+                # Inlining following effect to track all assertions.
+                # dummy_spec = z3.Bool('dummy_spec', self.ctx)
+                # Cegis.encode_counter_example(
+                #     simulator, self.definitions, dummy_spec, last_cex,
+                #     self.verifier_vars, self.definition_vars, self.ctx,
+                #     n_cex)
+
+                # Track all definitions
+                name_template = NAME_TEMPLATE + str(n_cex)
+                counter_example_constr = substitute_values(
+                    self.verifier_vars, last_cex, name_template, self.ctx)
+                simulator.add(counter_example_constr)
+
+                simulator.set(unsat_core=True)
+                for definition in unroll_assertions(self.definitions):
+                    name_template = NAME_TEMPLATE + str(n_cex)
+                    renamed_constr = rename_vars(
+                        definition, self.verifier_vars + self.definition_vars,
+                        name_template)
+                    simulator.add(renamed_constr)
+
+                write_solver(simulator, "simulator")
+                sat = simulator.check()
+                if(str(sat) != "sat"):
+                    unsat_core = simulator.unsat_core()
+                    print(len(unsat_core))
+                else:
+                    sim_model = simulator.model()
+                    sim_str = self.get_solution_str(
+                        sim_model, self.generator_vars, n_cex)
+                    logger.info("Simulation: \n{}".format(
+                        tcolor.candidate(sim_str)))
+            assert False
+        else:
+            logger.info("Known solution works.")
+
     @staticmethod
     def get_candidate_solution(generator: MySolver):
-        with open('generator.smt2', 'w') as f:
-            f.write(generator.to_smt2())
+        write_solver(generator, "generator")
 
         start = time.time()
         sat = generator.check()
@@ -142,11 +216,7 @@ class Cegis():
             generator_vars, candidate_solution, "{}", ctx)
         verifier.add(candidate_solution_constr)
 
-        with open('verifier.smt2', 'w') as f:
-            f.write(verifier.to_smt2())
-
-        with open('verifier.txt', 'w') as f:
-            f.write(verifier.assertions().sexpr())
+        write_solver(verifier, "verifier")
 
         # simplify_solver(
         #     self.verifier, z3.Tactic('propagate-values'),
@@ -221,6 +291,7 @@ class Cegis():
         assert cex_str not in self.counter_examples, (
             "Counter examples repeated")
         self.counter_examples.add(cex_str)
+        self.counter_example_models.append(counter_example)
 
     def run(self):
         start = time.time()
@@ -233,6 +304,7 @@ class Cegis():
             logger.info("Iteration: {}".format(itr))
 
             # Generator
+            self.check_known_solution()
             candidate_qres = Cegis.get_candidate_solution(self.generator)
 
             if(not candidate_qres.is_sat()):
