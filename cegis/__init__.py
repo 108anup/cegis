@@ -299,11 +299,6 @@ class Cegis():
 
     def log_solution_repeated_views(
             self, candidate_solution: z3.ModelRef, candidate_str: str):
-        """
-        Currently human is verifying if all definition vars have same
-        value in generator/verifier view.
-        TODO: We can actually do this check automatically.
-        """
         logger.info("="*80)
         logger.info("Debugging solution repeat")
         old_n_cex = self.cex_for_cs[candidate_str]
