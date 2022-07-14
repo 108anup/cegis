@@ -363,7 +363,9 @@ class Cegis():
         itr = 1
         while(True):
             logger.info("-"*80)
-            logger.info("Iteration: {}".format(itr))
+            logger.info("Iteration: {} ({} solution, {} counterexamples)"
+                        .format(itr, len(self.solutions),
+                                len(self.counter_examples)))
 
             # Generator
             self.check_known_solution()

@@ -5,12 +5,15 @@ from pyz3_utils.my_solver import MySolver
 
 
 def get_raw_value(expr: z3.ExprRef):
-    if(isinstance(expr, z3.RatNumRef)):
-        return expr.as_fraction()
-    elif(isinstance(expr, z3.BoolRef)):
-        return bool(expr)
-    else:
-        raise NotImplementedError
+    try:
+        if(isinstance(expr, z3.RatNumRef)):
+            return expr.as_fraction()
+        elif(isinstance(expr, z3.BoolRef)):
+            return bool(expr)
+        else:
+            raise NotImplementedError
+    except z3.z3types.Z3Exception as e:
+        return "Don't Care"
 
 
 def write_solver(solver: MySolver, filename: str):
