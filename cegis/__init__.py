@@ -171,7 +171,7 @@ class Cegis():
                         name_template)
                     simulator.add(renamed_constr)
 
-                write_solver(simulator, "simulator")
+                write_solver(simulator, "tmp/simulator")
                 sat = simulator.check()
                 if(str(sat) != "sat"):
                     unsat_core = simulator.unsat_core()
@@ -188,7 +188,7 @@ class Cegis():
 
     @staticmethod
     def get_candidate_solution(generator: MySolver):
-        write_solver(generator, "generator")
+        write_solver(generator, "tmp/generator")
 
         start = time.time()
         sat = generator.check()
@@ -222,7 +222,7 @@ class Cegis():
             generator_vars, candidate_solution, "{}", ctx)
         verifier.add(candidate_solution_constr)
 
-        write_solver(verifier, "verifier")
+        write_solver(verifier, "tmp/verifier")
 
         # simplify_solver(
         #     self.verifier, z3.Tactic('propagate-values'),
