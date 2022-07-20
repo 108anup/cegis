@@ -96,7 +96,8 @@ class Cegis():
     counter_examples = set()
     counter_example_models: List[z3.ModelRef] = list()
 
-    cex_for_cs: Dict[str, int] = dict()
+    n_cex_for_cs: Dict[str, int] = dict()
+    n_cex_for_cex: Dict[str, int] = dict()
 
     def __init__(
             self, generator_vars: List[z3.ExprRef],
@@ -298,10 +299,10 @@ class Cegis():
             solution, generator_vars + renamed_definition_vars)
 
     def log_solution_repeated_views(
-            self, candidate_solution: z3.ModelRef, candidate_str: str):
+            self, candidate_solution: z3.ModelRef, candidate_hash: str):
         logger.info("="*80)
         logger.info("Debugging solution repeat")
-        old_n_cex = self.cex_for_cs[candidate_str]
+        old_n_cex = self.n_cex_for_cs[candidate_hash]
         old_counter_example = self.counter_example_models[old_n_cex-1]
 
         vview = self.get_verifier_view(
@@ -327,33 +328,79 @@ class Cegis():
                 differing_vars.append(dvar.decl().name())
         logger.info(tcolor.error(
             "Views differ for: {}".format(differing_vars)))
+        assert False
+
+    def log_cex_repeated_views(
+            self, counter_example: z3.ModelRef, cex_hash: str,
+            candidate_solution: z3.ModelRef):
+        logger.info("="*80)
+        logger.info("Debugging cex repeat")
+        old_n_cex = self.n_cex_for_cex[cex_hash]
+        old_counter_example = self.counter_example_models[old_n_cex-1]
+
+        vview = self.get_verifier_view(
+            old_counter_example, self.verifier_vars,
+            self.definition_vars)
+        # The old cex should be exactly same as new cex
+        logger.info("Verifer view of old cex (new cex is above):\n{}"
+                    .format(tcolor.verifier(vview)))
+
+        gview = self.get_generator_view(
+            candidate_solution, self.generator_vars,
+            self.definition_vars, old_n_cex)
+        logger.info("Generator view of old cex:\n{}"
+                    .format(tcolor.generator(gview)))
+
+        name_template = NAME_TEMPLATE + str(old_n_cex)
+        differing_vars = []
+        for dvar in self.definition_vars:
+            gvar = z3.Const(
+                name_template.format(dvar.decl().name()), dvar.sort())
+            gval = get_raw_value(candidate_solution.eval(gvar))
+            vval = get_raw_value(old_counter_example.eval(dvar))
+            if(gval != vval):
+                differing_vars.append(dvar.decl().name())
+        logger.info(tcolor.error(
+            "Views differ for: {}".format(differing_vars)))
+        assert False
 
     def _bookkeep_cs(self, candidate_solution: z3.ModelRef):
         candidate_str = self.get_solution_str(
             candidate_solution, self.generator_vars, self._n_counter_examples)
         logger.info("Candidate solution: \n{}".format(
             tcolor.candidate(candidate_str)))
-        if(candidate_str in self.candidate_solutions):
+
+        candidate_hash = get_model_hash(
+            candidate_solution, self.generator_vars)
+        if(candidate_hash in self.candidate_solutions):
             logger.error("Candidate solution repeated")
-            self.log_solution_repeated_views(candidate_solution, candidate_str)
-            assert False
+            self.log_solution_repeated_views(
+                candidate_solution, candidate_hash)
         else:
-            self.candidate_solutions.add(candidate_str)
+            self.candidate_solutions.add(candidate_hash)
             # This is the counter example number that will be used
             # for the counter example that breaks this candidate_str
-            self.cex_for_cs[candidate_str] = self._n_counter_examples + 1
+            self.n_cex_for_cs[candidate_hash] = self._n_counter_examples + 1
             return candidate_str
 
-    def _bookkeep_cex(self, counter_example: z3.ModelRef):
+    def _bookkeep_cex(self, counter_example: z3.ModelRef,
+                      candidate_solution: z3.ModelRef):
         self._n_counter_examples += 1
+
         cex_str = self.get_counter_example_str(
             counter_example, self.verifier_vars)
         logger.info("Counter example: \n{}".format(
             tcolor.verifier(cex_str)))
-        assert cex_str not in self.counter_examples, (
-            "Counter examples repeated")
-        self.counter_examples.add(cex_str)
-        self.counter_example_models.append(counter_example)
+
+        cex_hash = get_model_hash(counter_example, self.verifier_vars)
+        if cex_hash in self.counter_examples:
+            logger.error("Counter examples repeated")
+            self.log_cex_repeated_views(
+                counter_example, cex_hash, candidate_solution)
+        else:
+            self.counter_examples.add(cex_hash)
+            self.counter_example_models.append(counter_example)
+            self.n_cex_for_cex[cex_hash] = self._n_counter_examples
 
     def run(self):
         start = time.time()
@@ -403,7 +450,7 @@ class Cegis():
 
             else:
                 assert counter_qres.model is not None
-                self._bookkeep_cex(counter_qres.model)
+                self._bookkeep_cex(counter_qres.model, candidate_qres.model)
                 Cegis.encode_counter_example(
                     self.generator, self.definitions, self.specification,
                     counter_qres.model, self.verifier_vars,
