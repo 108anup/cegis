@@ -120,17 +120,25 @@ class Cegis():
         self.generator.warn_undeclared = False
 
     def check_known_solution(self):
-        if(self.known_solution is None or len(self.solutions) > 0):
+        if(self.known_solution is None): # or len(self.solutions) > 0):
             return
 
+        start = time.time()
         dummy_generator = MySolver()
         dummy_generator.warn_undeclared = False
         assertions = self.generator.assertion_list
         dummy_generator.add(z3.And(*assertions))
         dummy_generator.add(self.known_solution)
+        end = time.time()
+        logger.debug("Took {} secs to build known solver.".format(end - start))
 
         sat = dummy_generator.check()
-        if(str(sat) != "sat"):
+        end = time.time()
+        logger.debug("Took {} secs to solve known solver.".format(end - start))
+
+        if(str(sat) == "sat"):
+            logger.info("Known solution works.")
+        else:
             logger.error("Known solution does not satisfy cex")
 
             # Check what happens under known solution for the last cex
@@ -184,8 +192,6 @@ class Cegis():
                     logger.info("Simulation: \n{}".format(
                         tcolor.candidate(sim_str)))
             assert False
-        else:
-            logger.info("Known solution works.")
 
     @staticmethod
     def get_candidate_solution(generator: MySolver):
