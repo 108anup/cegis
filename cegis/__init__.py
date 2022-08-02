@@ -119,8 +119,56 @@ class Cegis():
         self.generator = MySolver(ctx)
         self.generator.warn_undeclared = False
 
+    def sim_known_solution_against_cex(self, cex):
+        simulator = MySolver()
+        simulator.warn_undeclared = False
+        simulator.add(self.search_constraints)
+        simulator.add(self.known_solution)
+        n_cex = 1
+
+        # Just see what happens if we try to satisfy
+        # all defintions under the counter example.
+        # We don't care about the specification in the simulation
+
+        # Inlining following effect to track all assertions.
+        # dummy_spec = z3.Bool('dummy_spec', self.ctx)
+        # Cegis.encode_counter_example(
+        #     simulator, self.definitions, dummy_spec, last_cex,
+        #     self.verifier_vars, self.definition_vars, self.ctx,
+        #     n_cex)
+
+        # Track all definitions
+        name_template = NAME_TEMPLATE + str(n_cex)
+        counter_example_constr = substitute_values(
+            self.verifier_vars, cex, name_template, self.ctx)
+        simulator.add(counter_example_constr)
+
+        simulator.set(unsat_core=True)
+        for definition in unroll_assertions(self.definitions):
+            name_template = NAME_TEMPLATE + str(n_cex)
+            renamed_constr = rename_vars(
+                definition, self.verifier_vars + self.definition_vars,
+                name_template)
+            simulator.add(renamed_constr)
+
+        write_solver(simulator, "tmp/simulator")
+        return simulator
+
+    def check_known_solution_against_each_cex(self):
+        if(self.known_solution is None):
+            return
+
+        for cex in self.counter_example_models:
+            simulator = self.sim_known_solution_against_cex(cex)
+            ret = simulator.check()
+            if(str(ret) == "sat"):
+                continue
+            else:
+                unsat_core = simulator.unsat_core()
+                print(len(unsat_core))
+
     def check_known_solution(self):
-        if(self.known_solution is None): # or len(self.solutions) > 0):
+        if(self.known_solution is None):  # or len(self.solutions) > 0):
             return
 
         start = time.time()
@@ -149,43 +197,13 @@ class Cegis():
             if(last_cex is None):
                 logger.error("Known solution is not in search space")
             else:
-                simulator = MySolver()
-                simulator.warn_undeclared = False
-                simulator.add(self.search_constraints)
-                simulator.add(self.known_solution)
-                n_cex = 1
-
-                # Just see what happens if we try to satisfy
-                # all defintions under the counter example.
-                # We don't care about the specification in the simulation
-
-                # Inlining following effect to track all assertions.
-                # dummy_spec = z3.Bool('dummy_spec', self.ctx)
-                # Cegis.encode_counter_example(
-                #     simulator, self.definitions, dummy_spec, last_cex,
-                #     self.verifier_vars, self.definition_vars, self.ctx,
-                #     n_cex)
-
-                # Track all definitions
-                name_template = NAME_TEMPLATE + str(n_cex)
-                counter_example_constr = substitute_values(
-                    self.verifier_vars, last_cex, name_template, self.ctx)
-                simulator.add(counter_example_constr)
-
-                simulator.set(unsat_core=True)
-                for definition in unroll_assertions(self.definitions):
-                    name_template = NAME_TEMPLATE + str(n_cex)
-                    renamed_constr = rename_vars(
-                        definition, self.verifier_vars + self.definition_vars,
-                        name_template)
-                    simulator.add(renamed_constr)
-
-                write_solver(simulator, "tmp/simulator")
+                simulator = self.sim_known_solution_against_cex(last_cex)
                 sat = simulator.check()
                 if(str(sat) != "sat"):
                     unsat_core = simulator.unsat_core()
                     print(len(unsat_core))
                 else:
+                    n_cex = 1
                     sim_model = simulator.model()
                     sim_str = self.get_solution_str(
                         sim_model, self.generator_vars, n_cex)
@@ -408,6 +426,12 @@ class Cegis():
             self.counter_example_models.append(counter_example)
             self.n_cex_for_cex[cex_hash] = self._n_counter_examples
 
+    # Sincle ModelRef contains pointers, it can't be pickled.
+    # def pickle_all_cex(self):
+    #     import pickle
+    #     with open('./tmp-pickle', 'wb') as f:
+    #         pickle.dump(self.counter_example_models, f)
+
     def run(self):
         start = time.time()
         self.generator.add(self.search_constraints)
@@ -435,6 +459,11 @@ class Cegis():
                 # simplify_solver(
                 #     self.generator, z3.Tactic('propagate-values'),
                 #     "_generator")
+                # import ipdb; ipdb.set_trace()
+
+                # For debugging known solution
+                # self.pickle_all_cex()
+                # self.check_known_solution_against_each_cex()
                 # import ipdb; ipdb.set_trace()
                 break
 
