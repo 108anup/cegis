@@ -317,7 +317,7 @@ class Cegis():
         name_template = NAME_TEMPLATE + str(n_cex)
         for def_var in definition_vars:
             renamed_var = z3.Const(
-                name_template.format(def_var.decl().name), def_var.sort())
+                name_template.format(def_var.decl().name()), def_var.sort())
             renamed_definition_vars.append(renamed_var)
         return get_model_hash(
             solution, generator_vars + renamed_definition_vars)
