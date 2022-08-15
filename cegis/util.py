@@ -1,7 +1,65 @@
+import logging
 from typing import List
 import z3
-from pyz3_utils.common import bcolors
+from pyz3_utils.binary_search import BinarySearch
+from pyz3_utils.common import GlobalConfig, bcolors
 from pyz3_utils.my_solver import MySolver
+
+
+logger = logging.getLogger('cegis')
+GlobalConfig().default_logger_setup(logger)
+
+
+def optimize_var(s: MySolver, variable: z3.ExprRef, lo, hi, eps, maximize=True):
+    """
+    WLOG, assume we are maximizing, Find the maximum output value of input
+    variable in the range [lo, hi] (with accuracy of eps), such that the formula
+    checked by solver s is unsatisfiable.
+
+    To minimize set maximize = False.
+
+    If we want optimum value such that s is satisfiable, just reverse polarity of maximize.
+    """
+
+    # Assert that input is function application with zero
+    assert len(variable.children()) == 0
+    assert variable.num_args() == 0
+
+    """
+    The binary search process assumes lo, hi map to 1 1 1... 2 2 2... 3 3 3...
+    So if we want maximum value for unsat, lo/1 must be registered unsat.
+    Otherwise, if lo is sat then maximum value is less than lo - eps.
+    """
+    sat_value_1 = 'unsat'
+    sat_value_3 = 'sat'
+
+    if(not maximize):
+        sat_value_1 = 'sat'
+        sat_value_3 = 'unsat'
+
+    logger.info("Optimizing {}.".format(variable.decl().name()))
+
+    binary_search = BinarySearch(lo, hi, eps)
+    while True:
+        pt = binary_search.next_pt()
+        if(pt is None):
+            break
+
+        logger.info("Optimizing {}. Trying value: {}".format(variable.decl().name(), pt))
+        s.push()
+        s.add(variable == pt)
+        sat = s.check()
+        s.pop()
+
+        if(str(sat) == sat_value_1):
+            binary_search.register_pt(pt, 1)
+        elif str(sat) == "unknown":
+            binary_search.register_pt(pt, 2)
+        else:
+            assert str(sat) == sat_value_3, f"Unknown value: {str(sat)}"
+            binary_search.register_pt(pt, 3)
+
+    return binary_search.get_bounds()
 
 
 def get_raw_value(expr: z3.ExprRef):
