@@ -1,5 +1,8 @@
+import math
 import logging
-from typing import List
+from pprint import pprint
+import queue
+from typing import Dict, List, NamedTuple, Set, TypeVar
 import z3
 from pyz3_utils.binary_search import BinarySearch
 from pyz3_utils.common import GlobalConfig, bcolors
@@ -8,6 +11,93 @@ from pyz3_utils.my_solver import MySolver
 
 logger = logging.getLogger('cegis')
 GlobalConfig().default_logger_setup(logger)
+
+_KT = TypeVar('_KT')
+_VT = TypeVar('_VT')
+
+
+class hashabledict(Dict[_KT, _VT]):
+    def __hash__(self):
+        return hash(tuple(sorted(self.items())))
+
+    def copy(self):
+        return hashabledict(super(hashabledict, self).copy())
+
+
+class Metric(NamedTuple):
+    z3ExprRef: z3.ExprRef
+    lo: float
+    hi: float
+    eps: float
+    maximize: bool
+
+    def name(self) -> str:
+        ret = self.z3ExprRef.decl().name()
+        assert isinstance(ret, str)
+        return ret
+
+
+def optimize_multi_var(s: MySolver, optimization_list: List[Metric]):
+    str2metric = {
+        x.name(): x for x in optimization_list
+    }
+
+    tried_sets: Dict[str, Set[float]] = {
+        x.name(): {x.lo} if x.maximize else {x.hi} for x in optimization_list
+    }
+    tried_tuples: Set[hashabledict[str, float]] = set()
+
+    to_try: queue.Queue[hashabledict[str, float]] = queue.Queue()
+    first_try = hashabledict({x.name(): x.lo if x.maximize else x.hi
+                             for x in optimization_list})
+    to_try.put(first_try)
+    tried_tuples.add(first_try)
+
+    all_optimal_bounds = []
+
+    while(True):
+        if(to_try.empty()):
+            break
+        this_try = to_try.get()
+        logger.info("-"*80)
+        logger.info("This Try: {}".format(this_try))
+
+        for xname, u in this_try.items():
+            x = str2metric[xname]
+            # Find bound for x
+            logger.info("Finding bounds for {}"
+                        .format(xname))
+            s.push()
+            for yname, v in this_try.items():
+                y = str2metric[yname]
+                # Fix all other vars
+                if(x != y):
+                    logger.info("Setting {} to {}"
+                                .format(yname, v))
+                    s.add(y.z3ExprRef == v)
+            optimal_bounds = optimize_var(
+                s, x.z3ExprRef, x.lo, x.hi, x.eps, x.maximize)
+            s.pop()
+            if(x.maximize):
+                optimal_value = math.floor(optimal_bounds[0]/x.eps) * x.eps
+            else:
+                optimal_value = math.ceil(optimal_bounds[-1]/x.eps) * x.eps
+            logger.info("Found bounds for {}, {}, {}"
+                        .format(xname, optimal_value, optimal_bounds))
+
+            next_try = this_try.copy()
+            next_try.update({xname: optimal_value})
+
+            # if(optimal_value not in tried_sets[xname]):
+            # import ipdb; ipdb.set_trace()
+            if(next_try not in tried_tuples):
+                tried_tuples.add(next_try)
+                tried_sets[xname].add(optimal_value)
+                to_try.put(next_try)
+                all_optimal_bounds.append(next_try)
+
+    logger.debug(tried_sets)
+    return all_optimal_bounds
 
 
 def optimize_var(s: MySolver, variable: z3.ExprRef, lo, hi, eps, maximize=True):
@@ -37,7 +127,7 @@ def optimize_var(s: MySolver, variable: z3.ExprRef, lo, hi, eps, maximize=True):
         sat_value_1 = 'sat'
         sat_value_3 = 'unsat'
 
-    logger.info("Optimizing {}.".format(variable.decl().name()))
+    logger.debug("Optimizing {}.".format(variable.decl().name()))
 
     binary_search = BinarySearch(lo, hi, eps)
     while True:
@@ -45,7 +135,7 @@ def optimize_var(s: MySolver, variable: z3.ExprRef, lo, hi, eps, maximize=True):
         if(pt is None):
             break
 
-        logger.info("Optimizing {}. Trying value: {}".format(variable.decl().name(), pt))
+        logger.debug("Optimizing {}. Trying value: {}".format(variable.decl().name(), pt))
         s.push()
         s.add(variable == pt)
         sat = s.check()
