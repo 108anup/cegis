@@ -432,6 +432,10 @@ class Cegis():
     #     with open('./tmp-pickle', 'wb') as f:
     #         pickle.dump(self.counter_example_models, f)
 
+    def remove_solution(self, solution: z3.ModelRef):
+        return remove_solution(self.generator, solution,
+                               self.generator_vars, self.ctx)
+
     def run(self):
         start = time.time()
         self.generator.add(self.search_constraints)
@@ -480,8 +484,7 @@ class Cegis():
                     tcolor.proved(candidate_str)))
                 self.solutions.add(candidate_str)
 
-                remove_solution(self.generator, candidate_qres.model,
-                                self.generator_vars, self.ctx)
+                self.remove_solution(candidate_qres.model)
 
             else:
                 assert counter_qres.model is not None
