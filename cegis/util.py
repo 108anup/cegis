@@ -1,3 +1,4 @@
+import numpy as np
 import math
 import logging
 from pprint import pprint
@@ -158,10 +159,12 @@ def get_raw_value(expr: z3.ExprRef):
             return expr.as_fraction()
         elif(isinstance(expr, z3.BoolRef)):
             return bool(expr)
+        elif(isinstance(expr, z3.ArithRef)):
+            return np.nan
         else:
             raise NotImplementedError
     except z3.z3types.Z3Exception as e:
-        return "Don't Care"
+        return np.nan
 
 
 def write_solver(solver: MySolver, filename: str):
