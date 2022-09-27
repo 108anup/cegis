@@ -349,9 +349,9 @@ class Cegis():
             gval = get_raw_value(candidate_solution.eval(gvar))
             vval = get_raw_value(old_counter_example.eval(dvar))
             if(gval != vval):
-                differing_vars.append(dvar.decl().name())
+                differing_vars.append((dvar.decl().name(), gval, vval))
         logger.info(tcolor.error(
-            "Views differ for: {}".format(differing_vars)))
+            "Views differ for (var, gval, vval): {}".format(differing_vars)))
         assert False
 
     def log_cex_repeated_views(
