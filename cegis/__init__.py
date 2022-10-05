@@ -63,6 +63,20 @@ def get_model_hash(model: z3.ModelRef, var_list: List[z3.ExprRef]):
     return ", ".join(str_list)
 
 
+def get_unsat_core(solver: MySolver):
+    dummy = MySolver()
+    dummy.warn_undeclared = False
+    dummy.set(unsat_core=True)
+
+    assertion_list = solver.assertion_list
+    for assertion in assertion_list:
+        for expr in unroll_assertions(assertion):
+            dummy.add(expr)
+    assert(str(dummy.check()) == "unsat")
+    unsat_core = dummy.unsat_core()
+    return unsat_core
+
+
 @dataclass
 class QueryResult:
     sat: z3.CheckSatResult
@@ -207,8 +221,10 @@ class Cegis():
                     sim_model = simulator.model()
                     sim_str = self.get_solution_str(
                         sim_model, self.generator_vars, n_cex)
-                    logger.info("Simulation: \n{}".format(
-                        tcolor.candidate(sim_str)))
+                    gen_view = self.get_generator_view(
+                        sim_model, self.generator_vars, self.definition_vars, n_cex)
+                    logger.info("Simulation: \n{}\n{}".format(
+                        tcolor.candidate(sim_str), tcolor.candidate(gen_view)))
             assert False
 
     @staticmethod
@@ -468,6 +484,9 @@ class Cegis():
                 # For debugging known solution
                 # self.pickle_all_cex()
                 # self.check_known_solution_against_each_cex()
+                # import ipdb; ipdb.set_trace()
+
+                # unsat_core = get_unsat_core(self.generator)
                 # import ipdb; ipdb.set_trace()
                 break
 
