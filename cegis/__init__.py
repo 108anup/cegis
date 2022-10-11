@@ -1,3 +1,5 @@
+import os
+import pandas as pd
 import logging
 import time
 from dataclasses import dataclass
@@ -118,7 +120,8 @@ class Cegis():
             verifier_vars: List[z3.ExprRef],
             definition_vars: List[z3.ExprRef], search_constraints: z3.ExprRef,
             definitions: z3.ExprRef, specification: z3.ExprRef,
-            ctx: z3.Context, known_solution: Optional[z3.ExprRef] = None):
+            ctx: z3.Context, known_solution: Optional[z3.ExprRef] = None,
+            solution_log_path: Optional[str] = None):
         self.generator_vars = generator_vars
         self.verifier_vars = verifier_vars
         self.definition_vars = definition_vars
@@ -132,6 +135,7 @@ class Cegis():
         self.verifier.warn_undeclared = False
         self.generator = MySolver(ctx)
         self.generator.warn_undeclared = False
+        self.solution_log_path = solution_log_path
 
     def sim_known_solution_against_cex(self, cex):
         simulator = MySolver()
@@ -452,6 +456,23 @@ class Cegis():
         return remove_solution(self.generator, solution,
                                self.generator_vars, self.ctx)
 
+    @staticmethod
+    def log_proved_solution(
+            model: z3.ModelRef,
+            generator_vars: List[z3.ExprRef], path: Optional[str]):
+        if(path is None):
+            return
+
+        # Assumes that two varaiables with different sorts
+        # always have different names.
+        solution_dict = {
+            x.decl().name(): get_raw_value(model.eval(x))
+            for x in generator_vars
+        }
+        solution_df = pd.DataFrame([solution_dict])
+        write_header = not os.path.exists(path)
+        solution_df.to_csv(path, mode='a', header=write_header)
+
     def run(self):
         start = time.time()
         self.generator.add(self.search_constraints)
@@ -502,6 +523,9 @@ class Cegis():
                 logger.info("Proved solution: \n{}".format(
                     tcolor.proved(candidate_str)))
                 self.solutions.add(candidate_str)
+                self.log_proved_solution(
+                    candidate_qres.model, self.generator_vars,
+                    self.solution_log_path)
 
                 self.remove_solution(candidate_qres.model)
 
