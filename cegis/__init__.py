@@ -52,7 +52,8 @@ def rename_vars(
 
 def remove_solution(
         solver: MySolver, solution: z3.ModelRef,
-        var_list: List[z3.ExprRef], ctx: z3.Context):
+        var_list: List[z3.ExprRef], ctx: z3.Context,
+        solution_num: int):
     solution_value_constr = substitute_values(
         var_list, solution, "{}", ctx)
     solver.add(z3.Not(solution_value_constr))
@@ -105,6 +106,7 @@ class Cegis():
     generator: MySolver
 
     _n_counter_examples: int = 0
+    _n_proved_solutions: int = 0
 
     candidate_solutions = set()
     solutions = set()
@@ -454,7 +456,8 @@ class Cegis():
 
     def remove_solution(self, solution: z3.ModelRef):
         return remove_solution(self.generator, solution,
-                               self.generator_vars, self.ctx)
+                               self.generator_vars, self.ctx,
+                               self._n_proved_solutions)
 
     @staticmethod
     def log_proved_solution(
@@ -526,6 +529,7 @@ class Cegis():
                 self.log_proved_solution(
                     candidate_qres.model, self.generator_vars,
                     self.solution_log_path)
+                self._n_proved_solutions += 1
 
                 self.remove_solution(candidate_qres.model)
 
