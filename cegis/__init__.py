@@ -59,6 +59,23 @@ def remove_solution(
     solver.add(z3.Not(solution_value_constr))
 
 
+def log_proved_solution(
+        model: z3.ModelRef,
+        generator_vars: List[z3.ExprRef], path: Optional[str]):
+    if(path is None):
+        return
+
+    # Assumes that two varaiables with different sorts
+    # always have different names.
+    solution_dict = {
+        x.decl().name(): get_raw_value(model.eval(x))
+        for x in generator_vars
+    }
+    solution_df = pd.DataFrame([solution_dict])
+    write_header = not os.path.exists(path)
+    solution_df.to_csv(path, mode='a', header=write_header)
+
+
 def get_model_hash(model: z3.ModelRef, var_list: List[z3.ExprRef]):
     str_list = []
     for v in var_list:
@@ -459,22 +476,9 @@ class Cegis():
                                self.generator_vars, self.ctx,
                                self._n_proved_solutions)
 
-    @staticmethod
-    def log_proved_solution(
-            model: z3.ModelRef,
-            generator_vars: List[z3.ExprRef], path: Optional[str]):
-        if(path is None):
-            return
-
-        # Assumes that two varaiables with different sorts
-        # always have different names.
-        solution_dict = {
-            x.decl().name(): get_raw_value(model.eval(x))
-            for x in generator_vars
-        }
-        solution_df = pd.DataFrame([solution_dict])
-        write_header = not os.path.exists(path)
-        solution_df.to_csv(path, mode='a', header=write_header)
+    def log_proved_solution(self, model: z3.ModelRef):
+        return log_proved_solution(
+            model, self.generator_vars, self.solution_log_path)
 
     def run(self):
         start = time.time()
@@ -526,9 +530,7 @@ class Cegis():
                 logger.info("Proved solution: \n{}".format(
                     tcolor.proved(candidate_str)))
                 self.solutions.add(candidate_str)
-                self.log_proved_solution(
-                    candidate_qres.model, self.generator_vars,
-                    self.solution_log_path)
+                self.log_proved_solution(candidate_qres.model)
                 self._n_proved_solutions += 1
 
                 self.remove_solution(candidate_qres.model)
