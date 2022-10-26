@@ -8,7 +8,11 @@
 
 2. Counter example repeats. The generator already should have checked the
     counter example. But it seems like it did not. This will happen if the
-    generator does not know the counter example properly. E.g., if there are
+    generator does not know the counter example properly.
+
+    If views differ then, the definitions are perhaps not setup properly.
+
+    If no views differ then perhaps: there are
     extra variables that generator can exploit to satisfy specificaion.
 
 3. Known solution removed from search space. You know a solution should work,
