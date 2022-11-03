@@ -38,7 +38,7 @@ class Metric(NamedTuple):
         return ret
 
 
-def optimize_multi_var(s: MySolver, optimization_list: List[Metric]):
+def optimize_multi_var(s: MySolver, optimization_list: List[Metric], quick=False):
     str2metric = {
         x.name(): x for x in optimization_list
     }
@@ -94,7 +94,8 @@ def optimize_multi_var(s: MySolver, optimization_list: List[Metric]):
             if(next_try not in tried_tuples):
                 tried_tuples.add(next_try)
                 tried_sets[xname].add(optimal_value)
-                to_try.put(next_try)
+                if(not quick):
+                    to_try.put(next_try)
                 all_optimal_bounds.append(next_try)
 
     logger.debug(tried_sets)
