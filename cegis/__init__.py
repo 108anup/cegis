@@ -235,19 +235,22 @@ class Cegis():
 
             if(last_cex is None):
                 logger.error("Known solution is not in search space")
+                unsat_core = get_unsat_core(dummy_generator)
             else:
                 # Check what happens under known solution for the last cex
                 logger.error("Known solution does not satisfy cex")
                 simulator = self.sim_known_solution_against_cex(last_cex)
                 sat = simulator.check()
                 if(str(sat) != "sat"):
-                    logger.error("This unsat core breaks the known solution.")
+                    logger.error("Can't simulate known solution due to unsat core.")
                     unsat_core = simulator.unsat_core()
                     print(len(unsat_core))
                 else:
                     # Ideally this should not happen.
                     # This means there is python bug not a logic bug.
-                    logger.error("Known solution works for sim but not for generator!?!")
+                    logger.error(
+                        "Without the specification constraints, "
+                        "this happens for the known solution on the cex")
                     n_cex = 1
                     sim_model = simulator.model()
                     sim_str = self.get_solution_str(
@@ -317,7 +320,9 @@ class Cegis():
         # import ipdb; ipdb.set_trace()
 
         start = time.time()
-        sat, model = run_verifier(verifier)
+        # Since the run_verifier can be output of a partial function, we use the
+        # name of the paramter here.
+        sat, model = run_verifier(verifier=verifier)
         end = time.time()
         logger.info("Verifer returned {} in {:.6f} secs.".format(
             sat, end - start))
