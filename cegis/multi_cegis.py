@@ -1,14 +1,15 @@
-from dataclasses import dataclass
-import z3
-from typing import List, Optional, Tuple, Dict
-from cegis import Cegis, remove_solution
-from pyz3_utils import MySolver
-import time
 import logging
+import time
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
+import z3
+from pyz3_utils import MySolver
 from pyz3_utils.common import GlobalConfig
 
-from .util import tcolor
+from cegis import Cegis, remove_solution
 
+from .util import tcolor
 
 logger = logging.getLogger('multi_cegis')
 GlobalConfig().default_logger_setup(logger)
