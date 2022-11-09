@@ -1,4 +1,5 @@
 import os
+import pprint
 import pandas as pd
 import logging
 import time
@@ -22,6 +23,8 @@ RunVerifierType = Callable[
 GetModelHashType = Callable[[z3.ModelRef, List[z3.ExprRef]], str]
 GetVerifierViewType = Callable[
     [z3.ModelRef, List[z3.ExprRef], List[z3.ExprRef]], str]
+GetGeneratorViewType = Callable[
+    [z3.ModelRef, List[z3.ExprRef], List[z3.ExprRef], int], str]
 
 
 def substitute_values(var_list: List[z3.ExprRef], model: z3.ModelRef,
@@ -379,7 +382,8 @@ class Cegis():
             self, candidate_solution: z3.ModelRef, candidate_hash: str,
             verifier_vars: List[z3.ExprRef],
             definition_vars: List[z3.ExprRef],
-            get_verifier_view: GetVerifierViewType):
+            get_verifier_view: GetVerifierViewType,
+            get_generator_view: GetGeneratorViewType):
         logger.info("="*80)
         logger.info("Debugging solution repeat")
         old_n_cex = self.n_cex_for_cs[candidate_hash]
@@ -391,7 +395,7 @@ class Cegis():
         logger.info("Verifer view of repeat solution:\n{}"
                     .format(tcolor.verifier(vview)))
 
-        gview = self.get_generator_view(
+        gview = get_generator_view(
             candidate_solution, self.generator_vars,
             definition_vars, old_n_cex)
         logger.info("Generator view of repeat solution:\n{}"
@@ -407,21 +411,24 @@ class Cegis():
             if(gval != vval):
                 differing_vars.append((dvar.decl().name(), gval, vval))
         logger.info(tcolor.error(
-            "Views differ for (var, gval, vval): {}".format(differing_vars)))
+            "Views differ for (var, gval, vval): {}".format(
+                pprint.pformat(differing_vars))))
         assert False
 
     def log_solution_repeated_views(
             self, candidate_solution: z3.ModelRef, candidate_hash: str):
         return self._log_solution_repeated_views(
             candidate_solution, candidate_hash, self.verifier_vars,
-            self.definition_vars, self.get_verifier_view)
+            self.definition_vars, self.get_verifier_view,
+            self.get_generator_view)
 
     def _log_cex_repeated_views(
             self, counter_example: z3.ModelRef, cex_hash: str,
             candidate_solution: z3.ModelRef,
             verifier_vars: List[z3.ExprRef],
             definition_vars: List[z3.ExprRef],
-            get_verifier_view: GetVerifierViewType):
+            get_verifier_view: GetVerifierViewType,
+            get_generator_view: GetGeneratorViewType):
         logger.info("="*80)
         logger.info("Debugging cex repeat")
         old_n_cex = self.n_cex_for_cex[cex_hash]
@@ -434,7 +441,7 @@ class Cegis():
         logger.info("Verifer view of old cex (new cex is above):\n{}"
                     .format(tcolor.verifier(vview)))
 
-        gview = self.get_generator_view(
+        gview = get_generator_view(
             candidate_solution, self.generator_vars,
             definition_vars, old_n_cex)
         logger.info("Generator view of old cex:\n{}"
@@ -450,7 +457,7 @@ class Cegis():
             if(gval != vval):
                 differing_vars.append(dvar.decl().name())
         logger.info(tcolor.error(
-            "Views differ for: {}".format(differing_vars)))
+            "Views differ for: {}".format(pprint.pformat(differing_vars))))
         assert False
 
     def log_cex_repeated_views(
@@ -458,7 +465,8 @@ class Cegis():
             candidate_solution: z3.ModelRef):
         return self._log_cex_repeated_views(
             counter_example, cex_hash, candidate_solution,
-            self.verifier_vars, self.definition_vars, self.get_verifier_view)
+            self.verifier_vars, self.definition_vars,
+            self.get_verifier_view, self.get_generator_view)
 
     def _bookkeep_cs(self, candidate_solution: z3.ModelRef):
         candidate_str = self.get_solution_str(

@@ -1,6 +1,7 @@
+from dataclasses import dataclass
 import z3
 from typing import List, Optional, Tuple, Dict
-from cegis import Cegis
+from cegis import Cegis, remove_solution
 from pyz3_utils import MySolver
 import time
 import logging
@@ -13,6 +14,7 @@ logger = logging.getLogger('multi_cegis')
 GlobalConfig().default_logger_setup(logger)
 
 
+@dataclass
 class VerifierStruct:
     verifier_name: str
 
@@ -40,24 +42,35 @@ class VerifierStruct:
         return Cegis.get_verifier_view(
             counter_example, verifier_vars, definition_vars)
 
+    @staticmethod
+    def get_generator_view(
+            solution: z3.ModelRef, generator_vars: List[z3.ExprRef],
+            definition_vars: List[z3.ExprRef], n_cex: int) -> str:
+        return Cegis.get_generator_view(
+            solution, generator_vars, definition_vars, n_cex)
+
 
 class MultiCegis(Cegis):
+    critical_generator_vars: List[z3.ExprRef]
+
     n_verifiers: int = 1
     verifier_structs: List[VerifierStruct]
-    verifiers: List[MySolver]
+    verifiers: List[MySolver] = []
 
     # Which verifier produced this cex.
     # Useful for debugging repeat cex/solution
     # and unintended removal of solution.
-    vsn_for_n_cex: Dict[int, int]
+    vsn_for_n_cex: Dict[int, int] = dict()
 
     def __init__(
             self, generator_vars: List[z3.ExprRef],
             search_constraints: z3.ExprRef,
+            critical_generator_vars: List[z3.ExprRef],
             verifier_structs: List[VerifierStruct],
             ctx: z3.Context, known_solution: Optional[z3.ExprRef] = None,
             solution_log_path: Optional[str] = None):
         self.generator_vars = generator_vars
+        self.critical_generator_vars = critical_generator_vars
         self.search_constraints = search_constraints
         self.ctx = ctx
         self.known_solution = known_solution
@@ -65,17 +78,11 @@ class MultiCegis(Cegis):
         # Get rid of old API to prevent accidental use Unfortunately this
         # onlyleps at runtime. pyright still thinks these attributes are defined
         # :(, Is there any way to tell pyright, these are undefined.
-        del self.verifier
-        del self.verifier_vars
-        del self.definition_vars
-        del self.definitions
-        del self.specification
-
-        # TODO: Not yet refactored. I.e., cannot debug known solution getting
-        #  removed from search space.
-        del self.check_known_solution
-        del self.check_known_solution_against_each_cex
-        del self.sim_known_solution_against_cex
+        assert(not hasattr(self, 'verifier'))
+        assert(not hasattr(self, 'verifier_vars'))
+        assert(not hasattr(self, 'definition_vars'))
+        assert(not hasattr(self, 'definitions'))
+        assert(not hasattr(self, 'specification'))
 
         self.verifier_structs = verifier_structs
         self.n_verifiers = len(verifier_structs)
@@ -87,18 +94,29 @@ class MultiCegis(Cegis):
         self.generator.warn_undeclared = False
         self.solution_log_path = solution_log_path
 
+    # TODO: Not yet refactored. I.e., cannot debug known solution getting
+    #  removed from search space.
+    def check_known_solution(self):
+        raise NotImplementedError
+
+    def check_known_solution_against_each_cex(self):
+        raise NotImplementedError
+
+    def sim_known_solution_against_cex(self):
+        raise NotImplementedError
+
     # TODO: Consider just having a get_verifier_struct function that all
     #  overridden functions below can call.
 
     def _bookkeep_cex(self, counter_example: z3.ModelRef,
                       candidate_solution: z3.ModelRef,
                       vsn: int):
-        # Need to additionally save which verifeir produced this cex.
-        self.vsn_for_n_cex[self._n_counter_examples] = vsn
         vs = self.verifier_structs[vsn]
-        return super()._bookkeep_cex(
+        super()._bookkeep_cex(
             counter_example, candidate_solution,
             vs.verifier_vars, vs.get_counter_example_str)
+        # Need to additionally save which verifeir produced this cex.
+        self.vsn_for_n_cex[self._n_counter_examples] = vsn
 
     def log_cex_repeated_views(self, counter_example: z3.ModelRef, cex_hash: str,
                                candidate_solution: z3.ModelRef):
@@ -107,7 +125,8 @@ class MultiCegis(Cegis):
         vs = self.verifier_structs[vsn]
         return self._log_cex_repeated_views(
             counter_example, cex_hash, candidate_solution,
-            vs.verifier_vars, vs.definition_vars, vs.get_verifier_view)
+            vs.verifier_vars, vs.definition_vars,
+            vs.get_verifier_view, vs.get_generator_view)
 
     def log_solution_repeated_views(
             self, candidate_solution: z3.ModelRef, candidate_hash: str):
@@ -116,7 +135,13 @@ class MultiCegis(Cegis):
         vs = self.verifier_structs[vsn]
         return self._log_solution_repeated_views(
             candidate_solution, candidate_hash, vs.verifier_vars,
-            vs.definition_vars, vs.get_verifier_view)
+            vs.definition_vars, vs.get_verifier_view,
+            vs.get_generator_view)
+
+    def remove_solution(self, solution: z3.ModelRef):
+        return remove_solution(self.generator, solution,
+                               self.critical_generator_vars, self.ctx,
+                               self._n_proved_solutions)
 
     def is_last_vsn(self, vsn: int):
         return vsn == self.n_verifiers - 1
