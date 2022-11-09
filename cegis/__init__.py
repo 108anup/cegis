@@ -3,7 +3,7 @@ import pandas as pd
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Callable
 
 import z3
 from pyz3_utils.common import GlobalConfig
@@ -17,6 +17,11 @@ GlobalConfig().default_logger_setup(logger)
 
 
 NAME_TEMPLATE = "{}__cex"
+RunVerifierType = Callable[
+    [MySolver], Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]]
+GetModelHashType = Callable[[z3.ModelRef, List[z3.ExprRef]], str]
+GetVerifierViewType = Callable[
+    [z3.ModelRef, List[z3.ExprRef], List[z3.ExprRef]], str]
 
 
 def substitute_values(var_list: List[z3.ExprRef], model: z3.ModelRef,
@@ -109,13 +114,13 @@ class QueryResult:
 
 class Cegis():
     generator_vars: List[z3.ExprRef]
+    search_constraints: z3.ExprRef
+    known_solution: Optional[z3.ExprRef]
+
     verifier_vars: List[z3.ExprRef]
     definition_vars: List[z3.ExprRef]
-
-    search_constraints: z3.ExprRef
     definitions: z3.ExprRef
     specification: z3.ExprRef
-    known_solution: Optional[z3.ExprRef]
 
     ctx: z3.Context
 
@@ -156,7 +161,7 @@ class Cegis():
         self.generator.warn_undeclared = False
         self.solution_log_path = solution_log_path
 
-    def sim_known_solution_against_cex(self, cex):
+    def sim_known_solution_against_cex(self, cex: z3.ModelRef):
         simulator = MySolver()
         simulator.warn_undeclared = False
         simulator.add(self.search_constraints)
@@ -224,9 +229,6 @@ class Cegis():
         if(str(sat) == "sat"):
             logger.info("Known solution works.")
         else:
-            logger.error("Known solution does not satisfy cex")
-
-            # Check what happens under known solution for the last cex
             last_cex = None
             if(len(self.counter_examples) > 0):
                 last_cex = self.counter_example_models[-1]
@@ -234,12 +236,18 @@ class Cegis():
             if(last_cex is None):
                 logger.error("Known solution is not in search space")
             else:
+                # Check what happens under known solution for the last cex
+                logger.error("Known solution does not satisfy cex")
                 simulator = self.sim_known_solution_against_cex(last_cex)
                 sat = simulator.check()
                 if(str(sat) != "sat"):
+                    logger.error("This unsat core breaks the known solution.")
                     unsat_core = simulator.unsat_core()
                     print(len(unsat_core))
                 else:
+                    # Ideally this should not happen.
+                    # This means there is python bug not a logic bug.
+                    logger.error("Known solution works for sim but not for generator!?!")
                     n_cex = 1
                     sim_model = simulator.model()
                     sim_str = self.get_solution_str(
@@ -267,7 +275,7 @@ class Cegis():
 
     @staticmethod
     def run_verifier(
-        verifier
+        verifier: MySolver
     ) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
         sat = verifier.check()
         model = None
@@ -275,10 +283,11 @@ class Cegis():
             model = verifier.model()
         return sat, model
 
+    @staticmethod
     def get_counter_example(
-            self,
             verifier: MySolver, candidate_solution: z3.ModelRef,
-            generator_vars: List[z3.ExprRef], ctx: z3.Context):
+            generator_vars: List[z3.ExprRef], ctx: z3.Context,
+            run_verifier: RunVerifierType):
         verifier.push()
 
         # Encode candidate solution
@@ -308,7 +317,7 @@ class Cegis():
         # import ipdb; ipdb.set_trace()
 
         start = time.time()
-        sat, model = self.run_verifier(verifier=verifier)
+        sat, model = run_verifier(verifier)
         end = time.time()
         logger.info("Verifer returned {} in {:.6f} secs.".format(
             sat, end - start))
@@ -361,28 +370,31 @@ class Cegis():
         return get_model_hash(
             solution, generator_vars + renamed_definition_vars)
 
-    def log_solution_repeated_views(
-            self, candidate_solution: z3.ModelRef, candidate_hash: str):
+    def _log_solution_repeated_views(
+            self, candidate_solution: z3.ModelRef, candidate_hash: str,
+            verifier_vars: List[z3.ExprRef],
+            definition_vars: List[z3.ExprRef],
+            get_verifier_view: GetVerifierViewType):
         logger.info("="*80)
         logger.info("Debugging solution repeat")
         old_n_cex = self.n_cex_for_cs[candidate_hash]
         old_counter_example = self.counter_example_models[old_n_cex-1]
 
-        vview = self.get_verifier_view(
-            old_counter_example, self.verifier_vars,
-            self.definition_vars)
+        vview = get_verifier_view(
+            old_counter_example, verifier_vars,
+            definition_vars)
         logger.info("Verifer view of repeat solution:\n{}"
                     .format(tcolor.verifier(vview)))
 
         gview = self.get_generator_view(
             candidate_solution, self.generator_vars,
-            self.definition_vars, old_n_cex)
+            definition_vars, old_n_cex)
         logger.info("Generator view of repeat solution:\n{}"
                     .format(tcolor.generator(gview)))
 
         name_template = NAME_TEMPLATE + str(old_n_cex)
         differing_vars = []
-        for dvar in self.definition_vars:
+        for dvar in definition_vars:
             gvar = z3.Const(
                 name_template.format(dvar.decl().name()), dvar.sort())
             gval = get_raw_value(candidate_solution.eval(gvar))
@@ -393,30 +405,39 @@ class Cegis():
             "Views differ for (var, gval, vval): {}".format(differing_vars)))
         assert False
 
-    def log_cex_repeated_views(
+    def log_solution_repeated_views(
+            self, candidate_solution: z3.ModelRef, candidate_hash: str):
+        return self._log_solution_repeated_views(
+            candidate_solution, candidate_hash, self.verifier_vars,
+            self.definition_vars, self.get_verifier_view)
+
+    def _log_cex_repeated_views(
             self, counter_example: z3.ModelRef, cex_hash: str,
-            candidate_solution: z3.ModelRef):
+            candidate_solution: z3.ModelRef,
+            verifier_vars: List[z3.ExprRef],
+            definition_vars: List[z3.ExprRef],
+            get_verifier_view: GetVerifierViewType):
         logger.info("="*80)
         logger.info("Debugging cex repeat")
         old_n_cex = self.n_cex_for_cex[cex_hash]
         old_counter_example = self.counter_example_models[old_n_cex-1]
 
-        vview = self.get_verifier_view(
-            old_counter_example, self.verifier_vars,
-            self.definition_vars)
+        vview = get_verifier_view(
+            old_counter_example, verifier_vars,
+            definition_vars)
         # The old cex should be exactly same as new cex
         logger.info("Verifer view of old cex (new cex is above):\n{}"
                     .format(tcolor.verifier(vview)))
 
         gview = self.get_generator_view(
             candidate_solution, self.generator_vars,
-            self.definition_vars, old_n_cex)
+            definition_vars, old_n_cex)
         logger.info("Generator view of old cex:\n{}"
                     .format(tcolor.generator(gview)))
 
         name_template = NAME_TEMPLATE + str(old_n_cex)
         differing_vars = []
-        for dvar in self.definition_vars:
+        for dvar in definition_vars:
             gvar = z3.Const(
                 name_template.format(dvar.decl().name()), dvar.sort())
             gval = get_raw_value(candidate_solution.eval(gvar))
@@ -426,6 +447,13 @@ class Cegis():
         logger.info(tcolor.error(
             "Views differ for: {}".format(differing_vars)))
         assert False
+
+    def log_cex_repeated_views(
+            self, counter_example: z3.ModelRef, cex_hash: str,
+            candidate_solution: z3.ModelRef):
+        return self._log_cex_repeated_views(
+            counter_example, cex_hash, candidate_solution,
+            self.verifier_vars, self.definition_vars, self.get_verifier_view)
 
     def _bookkeep_cs(self, candidate_solution: z3.ModelRef):
         candidate_str = self.get_solution_str(
@@ -447,15 +475,17 @@ class Cegis():
             return candidate_str
 
     def _bookkeep_cex(self, counter_example: z3.ModelRef,
-                      candidate_solution: z3.ModelRef):
+                      candidate_solution: z3.ModelRef,
+                      verifier_vars: List[z3.ExprRef],
+                      get_counter_example_str: GetModelHashType):
         self._n_counter_examples += 1
 
-        cex_str = self.get_counter_example_str(
-            counter_example, self.verifier_vars)
+        cex_str = get_counter_example_str(
+            counter_example, verifier_vars)
         logger.info("Counter example: \n{}".format(
             tcolor.verifier(cex_str)))
 
-        cex_hash = get_model_hash(counter_example, self.verifier_vars)
+        cex_hash = get_model_hash(counter_example, verifier_vars)
         if cex_hash in self.counter_examples:
             logger.error("Counter examples repeated")
             self.log_cex_repeated_views(
@@ -524,7 +554,7 @@ class Cegis():
             candidate_str = self._bookkeep_cs(candidate_qres.model)
             counter_qres = self.get_counter_example(
                 self.verifier, candidate_qres.model,
-                self.generator_vars, self.ctx)
+                self.generator_vars, self.ctx, self.run_verifier)
 
             if(not counter_qres.is_sat()):
                 logger.info("Proved solution: \n{}".format(
@@ -537,7 +567,9 @@ class Cegis():
 
             else:
                 assert counter_qres.model is not None
-                self._bookkeep_cex(counter_qres.model, candidate_qres.model)
+                self._bookkeep_cex(counter_qres.model,
+                                   candidate_qres.model, self.verifier_vars,
+                                   self.get_counter_example_str)
                 Cegis.encode_counter_example(
                     self.generator, self.definitions, self.specification,
                     counter_qres.model, self.verifier_vars,
