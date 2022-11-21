@@ -7,7 +7,7 @@ import z3
 from pyz3_utils import MySolver
 from pyz3_utils.common import GlobalConfig
 
-from cegis import Cegis, remove_solution
+from cegis import Cegis, get_unsat_core, remove_solution
 
 from .util import tcolor
 
@@ -198,6 +198,9 @@ class MultiCegis(Cegis):
                         counter_qres.model, vs.verifier_vars,
                         vs.definition_vars, self.ctx, self._n_counter_examples)
                     break
+                # else:
+                #     unsat_core = get_unsat_core(_verifier)
+                #     import ipdb; ipdb.set_trace()
             else:
                 # All verifiers passed. Continue finding more solutions
                 logger.info("Proved solution: \n{}".format(
