@@ -38,6 +38,14 @@ class Metric(NamedTuple):
         return ret
 
 
+def fix_metrics(solver: MySolver, metric_list: List[Metric]):
+    for metric in metric_list:
+        if(metric.maximize):
+            solver.add(metric.z3ExprRef == metric.lo)
+        else:
+            solver.add(metric.z3ExprRef == metric.hi)
+
+
 def optimize_multi_var(s: MySolver, optimization_list: List[Metric], quick=False):
     str2metric = {
         x.name(): x for x in optimization_list
