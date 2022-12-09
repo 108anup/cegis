@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import math
 import logging
@@ -182,6 +183,15 @@ def write_solver(solver: MySolver, filename: str):
 
     with open(filename + '.txt', 'w') as f:
         f.write(solver.assertions().sexpr())
+
+
+def profile_function(function):
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        function(*args, **kwargs)
+        end = time.time()
+        logger.info(f"{function.__name__} took {end - start:.6f} secs.")
+    return wrapper
 
 
 def unroll_assertions(expression: z3.ExprRef) -> List[z3.ExprRef]:

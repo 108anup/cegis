@@ -2,7 +2,7 @@ import logging
 import time
 import z3
 from typing import Callable, List, Optional
-from cegis.util import tcolor, write_solver
+from cegis.util import profile_function, tcolor, write_solver
 from pyz3_utils.common import GlobalConfig
 
 from pyz3_utils.my_solver import MySolver
@@ -77,6 +77,7 @@ class ExistsForall:
         write_solver(s, "tmp/quantified_smt_solver")
         return s
 
+    @profile_function
     def run(self):
         s = self.create_solver()
 
@@ -100,7 +101,9 @@ class ExistsForall:
                 si += 1
             else:
                 break
+        logger.info("No more solutions found.")
 
+    @profile_function
     def run_all(self):
         s = self.create_solver()
         start = time.time()
@@ -112,3 +115,4 @@ class ExistsForall:
             logger.info("Solution {}: \n{}".format(
                 si, tcolor.proved(solution_str)))
             start = time.time()
+        logger.info("No more solutions found.")
