@@ -13,7 +13,7 @@ GlobalConfig().default_logger_setup(logger)
 
 
 GetSolutionStrType = Callable[
-    [z3.ModelRef, List[z3.ExprRef], float], str]
+    [z3.ModelRef, List[z3.ExprRef], int], str]
 
 
 def block_model(s: MySolver, m: z3.ModelRef, terms: List[z3.ExprRef]):
