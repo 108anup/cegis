@@ -402,17 +402,8 @@ class Cegis():
                     .format(tcolor.generator(gview)))
 
         name_template = NAME_TEMPLATE + str(old_n_cex)
-        differing_vars = []
-        for dvar in definition_vars:
-            gvar = z3.Const(
-                name_template.format(dvar.decl().name()), dvar.sort())
-            gval = get_raw_value(candidate_solution.eval(gvar))
-            vval = get_raw_value(old_counter_example.eval(dvar))
-            if(gval != vval):
-                differing_vars.append((dvar.decl().name(), gval, vval))
-        logger.info(tcolor.error(
-            "Views differ for (var, gval, vval): {}".format(
-                pprint.pformat(differing_vars))))
+        self.print_differing_views(
+            old_counter_example, candidate_solution, name_template)
         assert False
 
     def log_solution_repeated_views(
@@ -421,6 +412,31 @@ class Cegis():
             candidate_solution, candidate_hash, self.verifier_vars,
             self.definition_vars, self.get_verifier_view,
             self.get_generator_view)
+
+    def print_differing_views(
+            self, old_counter_example: z3.ModelRef,
+            candidate_solution: z3.ModelRef, name_template: str):
+        all_defs = old_counter_example.decls()
+        gen_var_names = [x.decl().name() for x in self.generator_vars]
+
+        differing_vars = []
+        # for dvar in definition_vars:
+        for ddef in all_defs:
+            this_sort = ddef.range()
+            this_name = ddef.name()
+            dvar = z3.Const(this_name, this_sort)
+            if(this_name in gen_var_names):
+                gvar = dvar
+            else:
+                gvar = z3.Const(
+                    name_template.format(this_name), this_sort)
+            gval = get_raw_value(candidate_solution.eval(gvar))
+            vval = get_raw_value(old_counter_example.eval(dvar))
+            if(gval != vval):
+                differing_vars.append((this_name, gval, vval))
+        logger.info(tcolor.error(
+            "Views differ for (var, gval, vval): {}".format(
+                pprint.pformat(differing_vars))))
 
     def _log_cex_repeated_views(
             self, counter_example: z3.ModelRef, cex_hash: str,
@@ -448,16 +464,8 @@ class Cegis():
                     .format(tcolor.generator(gview)))
 
         name_template = NAME_TEMPLATE + str(old_n_cex)
-        differing_vars = []
-        for dvar in definition_vars:
-            gvar = z3.Const(
-                name_template.format(dvar.decl().name()), dvar.sort())
-            gval = get_raw_value(candidate_solution.eval(gvar))
-            vval = get_raw_value(old_counter_example.eval(dvar))
-            if(gval != vval):
-                differing_vars.append(dvar.decl().name())
-        logger.info(tcolor.error(
-            "Views differ for: {}".format(pprint.pformat(differing_vars))))
+        self.print_differing_views(
+            old_counter_example, candidate_solution, name_template)
         assert False
 
     def log_cex_repeated_views(
