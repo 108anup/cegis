@@ -10,7 +10,7 @@ import z3
 from pyz3_utils.common import GlobalConfig
 from pyz3_utils.my_solver import MySolver
 
-from .util import (get_raw_value, simplify_solver, tcolor, unroll_assertions,
+from .util import (copy_solver, get_raw_value, simplify_solver, tcolor, unroll_assertions,
                    write_solver)
 
 logger = logging.getLogger('cegis')
@@ -269,7 +269,20 @@ class Cegis():
         write_solver(generator, "tmp/generator")
 
         start = time.time()
-        sat = generator.check()
+        while(True):
+            try:
+                sat = generator.check()
+            except z3.z3types.Z3Exception as e:
+                end = time.time()
+                logger.error(
+                    f"Generator threw error after {end - start:.6f} secs.")
+                logger.error(f"{e}")
+                logger.info(
+                    "Restarting generator after giving up all solver state.")
+                generator = copy_solver(generator)
+            else:
+                break
+
         end = time.time()
         logger.info("Generator returned {} in {:.6f} secs.".format(
             sat, end - start))

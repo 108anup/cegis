@@ -185,6 +185,14 @@ def write_solver(solver: MySolver, filename: str):
         f.write(solver.assertions().sexpr())
 
 
+def copy_solver(solver: MySolver):
+    s = MySolver(ctx=solver.ctx)
+    s.warn_undeclared = False
+    for assertion in solver.assertion_list:
+        s.add(assertion)
+    return s
+
+
 def profile_function(function):
     def wrapper(*args, **kwargs):
         start = time.time()
