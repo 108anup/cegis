@@ -142,6 +142,8 @@ class Cegis():
     n_cex_for_cs: Dict[str, int] = dict()
     n_cex_for_cex: Dict[str, int] = dict()
 
+    NUM_SOLVING_RETRIES = 3
+
     def __init__(
             self, generator_vars: List[z3.ExprRef],
             verifier_vars: List[z3.ExprRef],
@@ -264,22 +266,27 @@ class Cegis():
                         tcolor.candidate(sim_str), tcolor.candidate(gen_view)))
             assert False
 
-    @staticmethod
-    def get_candidate_solution(generator: MySolver):
-        write_solver(generator, "tmp/generator")
+    def get_candidate_solution(self):
+        write_solver(self.generator, "tmp/generator")
 
+        attempt = 0
         start = time.time()
         while(True):
+            attempt += 1
             try:
-                sat = generator.check()
+                sat = self.generator.check()
             except z3.z3types.Z3Exception as e:
                 end = time.time()
                 logger.error(
-                    f"Generator threw error after {end - start:.6f} secs.")
+                    f"Generator threw error after {end - start:.6f} secs"
+                    f" on attempt {attempt}.")
                 logger.error(f"{e}")
-                logger.info(
-                    "Restarting generator after giving up all solver state.")
-                generator = copy_solver(generator)
+                if(attempt <= self.NUM_SOLVING_RETRIES):
+                    logger.info(
+                        "Restarting generator after clearing solver state.")
+                    self.generator = copy_solver(self.generator)
+                else:
+                    raise e
             else:
                 break
 
@@ -289,7 +296,7 @@ class Cegis():
 
         model = None
         if(str(sat) == "sat"):
-            model = generator.model()
+            model = self.generator.model()
         return QueryResult(sat, model, None)
 
     @staticmethod
@@ -343,6 +350,7 @@ class Cegis():
         logger.info("Verifer returned {} in {:.6f} secs.".format(
             sat, end - start))
 
+        # TODO(108anup): Consider using reset here as it gets rid of all pushes.
         verifier.pop()
         return QueryResult(sat, model, None)
 
@@ -558,7 +566,7 @@ class Cegis():
 
             # Generator
             self.check_known_solution()
-            candidate_qres = Cegis.get_candidate_solution(self.generator)
+            candidate_qres = self.get_candidate_solution()
 
             if(not candidate_qres.is_sat()):
                 logger.info(tcolor.generator("No more solutions found"))

@@ -164,7 +164,7 @@ class MultiCegis(Cegis):
             # Generator
             # TODO: not refactored.
             # self.check_known_solution()
-            candidate_qres = Cegis.get_candidate_solution(self.generator)
+            candidate_qres = self.get_candidate_solution()
 
             if(not candidate_qres.is_sat()):
                 logger.info(tcolor.generator("No more solutions found"))
