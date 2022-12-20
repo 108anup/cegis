@@ -202,6 +202,14 @@ def profile_function(function):
     return wrapper
 
 
+def z3_min(a: z3.ArithRef, b: z3.ArithRef):
+    return z3.If(a < b, a, b)
+
+
+def z3_max(a: z3.ArithRef, b: z3.ArithRef):
+    return z3.If(a > b, a, b)
+
+
 def unroll_assertions(expression: z3.ExprRef) -> List[z3.ExprRef]:
     """
     If the input expression is And of multiple expressions,
