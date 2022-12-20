@@ -203,11 +203,15 @@ def profile_function(function):
 
 
 def z3_min(a: z3.ArithRef, b: z3.ArithRef):
-    return z3.If(a < b, a, b)
+    ret = z3.If(a < b, a, b)
+    assert isinstance(ret, z3.ArithRef)
+    return ret
 
 
 def z3_max(a: z3.ArithRef, b: z3.ArithRef):
-    return z3.If(a > b, a, b)
+    ret = z3.If(a > b, a, b)
+    assert isinstance(ret, z3.ArithRef)
+    return ret
 
 
 def unroll_assertions(expression: z3.ExprRef) -> List[z3.ExprRef]:
