@@ -4,7 +4,7 @@ import math
 import logging
 from pprint import pprint
 import queue
-from typing import Dict, List, NamedTuple, Set, TypeVar
+from typing import Callable, Dict, List, NamedTuple, Set, TypeVar
 import z3
 from pyz3_utils.binary_search import BinarySearch
 from pyz3_utils.common import GlobalConfig, bcolors
@@ -211,6 +211,43 @@ def z3_min(a: z3.ArithRef, b: z3.ArithRef):
 def z3_max(a: z3.ArithRef, b: z3.ArithRef):
     ret = z3.If(a > b, a, b)
     assert isinstance(ret, z3.ArithRef)
+    return ret
+
+
+def retry_z3_mem(
+        solving_function: Callable, reset_function: Callable, n_attempts=3):
+    """
+    Sometimes solving a z3 formula gives out of memory exception. On such
+    formulas, if we reset the solver state, z3 is able to solve the formula.
+    This is a helper function for resetting and retrying solving for such cases.
+    """
+
+    attempt = 0
+    start = time.time()
+    while(True):
+        attempt += 1
+        try:
+            ret = solving_function()
+        except z3.z3types.Z3Exception as e:
+            end = time.time()
+            logger.error(
+                f"{solving_function.__name__}"
+                f" threw error after {end - start:.6f} secs"
+                f" on attempt {attempt}.")
+            logger.error(f"{e}")
+            if(attempt <= n_attempts):
+                logger.info(
+                    f"Performing {reset_function.__name__} and "
+                    f"restarting {solving_function.__name__}.")
+                reset_function()
+            else:
+                raise e
+        else:
+            break
+
+    end = time.time()
+    logger.info(f"{solving_function.__name__} returned"
+                f" in {end-start:.6f} secs.")
     return ret
 
 

@@ -10,7 +10,7 @@ import z3
 from pyz3_utils.common import GlobalConfig
 from pyz3_utils.my_solver import MySolver
 
-from .util import (copy_solver, get_raw_value, simplify_solver, tcolor, unroll_assertions,
+from .util import (copy_solver, get_raw_value, retry_z3_mem, simplify_solver, tcolor, unroll_assertions,
                    write_solver)
 
 logger = logging.getLogger('cegis')
@@ -160,8 +160,6 @@ class Cegis():
         self.ctx = ctx
         self.known_solution = known_solution
 
-        self.verifier = MySolver(ctx)
-        self.verifier.warn_undeclared = False
         self.generator = MySolver(ctx)
         self.generator.warn_undeclared = False
         self.solution_log_path = solution_log_path
@@ -308,6 +306,20 @@ class Cegis():
         if(str(sat) == "sat"):
             model = verifier.model()
         return sat, model
+
+    def get_counter_example_with_retry(
+            self, candidate_solution: z3.ModelRef) -> QueryResult:
+
+        def sf_get_cex():
+            return self.get_counter_example(
+                self.verifier, candidate_solution,
+                self.generator_vars, self.ctx, self.run_verifier)
+
+        def reset_verifier():
+            return self.init_verifier()
+
+        return retry_z3_mem(sf_get_cex, reset_verifier,
+                            self.NUM_SOLVING_RETRIES)
 
     @staticmethod
     def get_counter_example(
@@ -552,10 +564,15 @@ class Cegis():
         return log_proved_solution(
             model, self.generator_vars, self.solution_log_path)
 
+    def init_verifier(self):
+        self.verifier = MySolver(self.ctx)
+        self.verifier.warn_undeclared = False
+        self.verifier.add(z3.And(self.definitions, z3.Not(self.specification)))
+
     def run(self):
         start = time.time()
         self.generator.add(self.search_constraints)
-        self.verifier.add(z3.And(self.definitions, z3.Not(self.specification)))
+        self.init_verifier()
 
         itr = 1
         while(True):
@@ -594,9 +611,11 @@ class Cegis():
             # Verifier
             assert candidate_qres.model is not None
             candidate_str = self._bookkeep_cs(candidate_qres.model)
-            counter_qres = self.get_counter_example(
-                self.verifier, candidate_qres.model,
-                self.generator_vars, self.ctx, self.run_verifier)
+            counter_qres = self.get_counter_example_with_retry(
+                candidate_qres.model)
+            # counter_qres = self.get_counter_example(
+            #     self.verifier, candidate_qres.model,
+            #     self.generator_vars, self.ctx, self.run_verifier)
 
             if(not counter_qres.is_sat()):
                 logger.info("Proved solution: \n{}".format(
