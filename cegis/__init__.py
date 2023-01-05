@@ -362,6 +362,10 @@ class Cegis():
         logger.info("Verifer returned {} in {:.6f} secs.".format(
             sat, end - start))
 
+        # if(str(sat) == "unsat"):
+        #     unsat_core = get_unsat_core(verifier)
+        #     import ipdb; ipdb.set_trace()
+
         # TODO(108anup): Consider using reset here as it gets rid of all pushes.
         verifier.pop()
         return QueryResult(sat, model, None)
