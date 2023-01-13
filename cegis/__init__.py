@@ -67,12 +67,7 @@ def remove_solution(
     solver.add(z3.Not(solution_value_constr))
 
 
-def log_proved_solution(
-        model: z3.ModelRef,
-        generator_vars: List[z3.ExprRef], path: Optional[str]):
-    if(path is None):
-        return
-
+def get_solution_df(model: z3.ModelRef, generator_vars: List[z3.ExprRef]):
     # Assumes that two varaiables with different sorts
     # always have different names.
     solution_dict = {
@@ -80,6 +75,15 @@ def log_proved_solution(
         for x in generator_vars
     }
     solution_df = pd.DataFrame([solution_dict])
+    return solution_df
+
+
+def log_proved_solution(
+        model: z3.ModelRef,
+        generator_vars: List[z3.ExprRef], path: Optional[str]):
+    if(path is None):
+        return
+    solution_df = get_solution_df(model, generator_vars)
     write_header = not os.path.exists(path)
     solution_df.to_csv(path, mode='a', header=write_header)
 
