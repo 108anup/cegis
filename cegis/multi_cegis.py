@@ -174,6 +174,9 @@ class MultiCegis(Cegis):
 
                 end = time.time()
                 logger.info("Took {:.6f} secs.".format(end - start))
+
+                # unsat_core = get_unsat_core(self.generator)
+                # import ipdb; ipdb.set_trace()
                 break
 
             # else:
