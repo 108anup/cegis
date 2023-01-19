@@ -48,6 +48,9 @@ def fix_metrics(solver: MySolver, metric_list: List[Metric]):
 
 
 def optimize_multi_var(s: MySolver, optimization_list: List[Metric], quick=False):
+    if(len(optimization_list) == 1):
+        quick = True
+
     str2metric = {
         x.name(): x for x in optimization_list
     }
