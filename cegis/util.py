@@ -217,6 +217,20 @@ def z3_max(a: z3.ArithRef, b: z3.ArithRef):
     return ret
 
 
+def z3_min_list(args: List[z3.ArithRef]):
+    ret = args[0]
+    for arg in args[1:]:
+        ret = z3_min(ret, arg)
+    return ret
+
+
+def z3_max_list(args: List[z3.ArithRef]):
+    ret = args[0]
+    for arg in args[1:]:
+        ret = z3_max(ret, arg)
+    return ret
+
+
 def retry_z3_mem(
         solving_function: Callable, reset_function: Callable, n_attempts=3):
     """
