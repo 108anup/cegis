@@ -389,6 +389,18 @@ class Cegis():
             constr, verifier_vars + definition_vars, name_template)
         generator.add(z3.And(counter_example_constr, renamed_constr))
 
+        # # Pre-simplify the constraint so that the generator does not have to.
+        # g = z3.Goal()
+        # g.add(z3.And(counter_example_constr, renamed_constr))
+        # t = z3.Then(z3.Tactic('simplify'), z3.Tactic('solve-eqs'))
+        # simplified_constr = t(g)
+        # generator.add(simplified_constr.as_expr())
+
+        # Pre-simplification does not help. In fact it seems to be increasing
+        # generator's solving time. The reason could be that the solve rmight
+        # learn some clauses in the act of simplifying the formula. We depreive
+        # the solver of the learnings if we give it a pre-simplified formula.
+
     @staticmethod
     def get_solution_str(solution: z3.ModelRef,
                          generator_vars: List[z3.ExprRef],
