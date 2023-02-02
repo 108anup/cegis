@@ -142,7 +142,7 @@ class MultiCegis(Cegis):
     def remove_solution(self, solution: z3.ModelRef):
         return remove_solution(self.generator, solution,
                                self.critical_generator_vars, self.ctx,
-                               self._n_proved_solutions)
+                               self._n_proved_solutions, model_completion=True)
 
     def is_last_vsn(self, vsn: int):
         return vsn == self.n_verifiers - 1

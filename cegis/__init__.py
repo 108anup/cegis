@@ -28,7 +28,8 @@ GetGeneratorViewType = Callable[
 
 
 def substitute_values(var_list: List[z3.ExprRef], model: z3.ModelRef,
-                      name_template: str, ctx: z3.Context) -> z3.ExprRef:
+                      name_template: str, ctx: z3.Context,
+                      model_completion: bool = False) -> z3.ExprRef:
     """
     Returns an expression that constrains values of variables in var_list
     to those in the model. Variables in var_list are renamed using
@@ -37,7 +38,8 @@ def substitute_values(var_list: List[z3.ExprRef], model: z3.ModelRef,
     expr_list = []
     for v in var_list:
         name = name_template.format(v.decl().name())
-        expr_list.append(z3.Const(name, v.sort()) == model.eval(v))
+        expr_list.append(
+            z3.Const(name, v.sort()) == model.eval(v, model_completion))
     expr = z3.And(*expr_list)
     assert isinstance(expr, z3.BoolRef)
     return expr
@@ -61,9 +63,9 @@ def rename_vars(
 def remove_solution(
         solver: MySolver, solution: z3.ModelRef,
         var_list: List[z3.ExprRef], ctx: z3.Context,
-        solution_num: int):
+        solution_num: int, model_completion: bool = False):
     solution_value_constr = substitute_values(
-        var_list, solution, "{}", ctx)
+        var_list, solution, "{}", ctx, model_completion)
     solver.add(z3.Not(solution_value_constr))
 
 
@@ -71,7 +73,7 @@ def get_solution_df(model: z3.ModelRef, generator_vars: List[z3.ExprRef]):
     # Assumes that two varaiables with different sorts
     # always have different names.
     solution_dict = {
-        x.decl().name(): get_raw_value(model.eval(x))
+        x.decl().name(): get_raw_value(model.eval(x, model_completion=True))
         for x in generator_vars
     }
     solution_df = pd.DataFrame([solution_dict])
@@ -88,10 +90,13 @@ def log_proved_solution(
     solution_df.to_csv(path, mode='a', header=write_header)
 
 
-def get_model_hash(model: z3.ModelRef, var_list: List[z3.ExprRef]):
+def get_model_hash(
+    model: z3.ModelRef, var_list: List[z3.ExprRef],
+    model_completion: bool = False):
     str_list = []
     for v in var_list:
-        str_list.append("{} == {}".format(v.decl().name(), model.eval(v)))
+        str_list.append("{} == {}".format(
+            v.decl().name(), model.eval(v, model_completion)))
     return ", ".join(str_list)
 
 
@@ -334,7 +339,7 @@ class Cegis():
 
         # Encode candidate solution
         candidate_solution_constr = substitute_values(
-            generator_vars, candidate_solution, "{}", ctx)
+            generator_vars, candidate_solution, "{}", ctx, model_completion=True)
         verifier.add(candidate_solution_constr)
 
         write_solver(verifier, "tmp/verifier")
@@ -405,7 +410,7 @@ class Cegis():
     def get_solution_str(solution: z3.ModelRef,
                          generator_vars: List[z3.ExprRef],
                          n_cex: int) -> str:
-        return get_model_hash(solution, generator_vars)
+        return get_model_hash(solution, generator_vars, model_completion=True)
 
     @staticmethod
     def get_counter_example_str(counter_example: z3.ModelRef,
@@ -536,7 +541,7 @@ class Cegis():
             tcolor.candidate(candidate_str)))
 
         candidate_hash = get_model_hash(
-            candidate_solution, self.generator_vars)
+            candidate_solution, self.generator_vars, model_completion=True)
         if(candidate_hash in self.candidate_solutions):
             logger.error("Candidate solution repeated")
             self.log_solution_repeated_views(
@@ -578,7 +583,8 @@ class Cegis():
     def remove_solution(self, solution: z3.ModelRef):
         return remove_solution(self.generator, solution,
                                self.generator_vars, self.ctx,
-                               self._n_proved_solutions)
+                               self._n_proved_solutions,
+                               model_completion=True)
 
     def log_proved_solution(self, model: z3.ModelRef):
         return log_proved_solution(
