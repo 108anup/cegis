@@ -1,3 +1,6 @@
+import math
+import pandas as pd
+import os
 import logging
 import time
 from dataclasses import dataclass
@@ -7,7 +10,7 @@ import z3
 from pyz3_utils import MySolver
 from pyz3_utils.common import GlobalConfig
 
-from cegis import Cegis, get_unsat_core, remove_solution
+from cegis import Cegis, get_unsat_core, remove_solution, silent_remove_file
 
 from .util import tcolor
 
@@ -69,15 +72,16 @@ class MultiCegis(Cegis):
             critical_generator_vars: List[z3.ExprRef],
             verifier_structs: List[VerifierStruct],
             ctx: z3.Context, known_solution: Optional[z3.ExprRef] = None,
-            solution_log_path: Optional[str] = None):
+            solution_log_path: Optional[str] = None,
+            run_log_path: Optional[str] = None,):
         self.generator_vars = generator_vars
         self.critical_generator_vars = critical_generator_vars
         self.search_constraints = search_constraints
         self.ctx = ctx
         self.known_solution = known_solution
 
-        # Get rid of old API to prevent accidental use Unfortunately this
-        # onlyleps at runtime. pyright still thinks these attributes are defined
+        # Get rid of old API to prevent accidental use Unfortunately this only
+        # helps at runtime. pyright still thinks these attributes are defined
         # :(, Is there any way to tell pyright, these are undefined.
         assert(not hasattr(self, 'verifier'))
         assert(not hasattr(self, 'verifier_vars'))
@@ -94,6 +98,10 @@ class MultiCegis(Cegis):
         self.generator = MySolver(ctx)
         self.generator.warn_undeclared = False
         self.solution_log_path = solution_log_path
+        self.run_log_path = run_log_path
+
+        silent_remove_file(self.solution_log_path)
+        silent_remove_file(self.run_log_path)
 
     # TODO: Not yet refactored. I.e., cannot debug known solution getting
     #  removed from search space.
@@ -144,6 +152,28 @@ class MultiCegis(Cegis):
                                self.critical_generator_vars, self.ctx,
                                self._n_proved_solutions, model_completion=True)
 
+    def log_iteration(self, itr):
+        if(self.run_log_path is None):
+            return
+        run_entry = {
+            'timestamp': round(time.time(), 3),
+            'iterations': itr,
+            'counterexamples': self._n_counter_examples,
+            'solutions': self._n_proved_solutions,
+            'generator_checks': self.generator.num_checks,
+            'generator_time': round(self.generator.total_check_time, 3),
+        }
+        for i, vs in enumerate(self.verifier_structs):
+            _v = self.verifiers[i]
+            name = vs.verifier_name
+            run_entry[f'verifier_{name}_checks'] = _v.num_checks
+            run_entry[f'verifier_{name}_time'] = round(_v.total_check_time, 3)
+
+        run_df = pd.DataFrame([run_entry])
+        write_header = not os.path.exists(self.run_log_path)
+        run_df.to_csv(self.run_log_path, mode='a',
+                      header=write_header, index=False)
+
     def is_last_vsn(self, vsn: int):
         return vsn == self.n_verifiers - 1
 
@@ -160,6 +190,7 @@ class MultiCegis(Cegis):
             logger.info("Iteration: {} ({} solution, {} counterexamples)"
                         .format(itr, len(self.solutions),
                                 len(self.counter_examples)))
+            self.log_iteration(itr)
 
             # Generator
             # TODO: not refactored.

@@ -1,3 +1,4 @@
+import math
 import os
 import pprint
 import pandas as pd
@@ -91,8 +92,8 @@ def log_proved_solution(
 
 
 def get_model_hash(
-    model: z3.ModelRef, var_list: List[z3.ExprRef],
-    model_completion: bool = False):
+        model: z3.ModelRef, var_list: List[z3.ExprRef],
+        model_completion: bool = False):
     str_list = []
     for v in var_list:
         str_list.append("{} == {}".format(
@@ -112,6 +113,11 @@ def get_unsat_core(solver: MySolver):
     assert(str(dummy.check()) == "unsat")
     unsat_core = dummy.unsat_core()
     return unsat_core
+
+
+def silent_remove_file(path):
+    if(path is not None and os.path.exists(path)):
+        os.remove(path)
 
 
 @dataclass
@@ -159,7 +165,8 @@ class Cegis():
             definition_vars: List[z3.ExprRef], search_constraints: z3.ExprRef,
             definitions: z3.ExprRef, specification: z3.ExprRef,
             ctx: z3.Context, known_solution: Optional[z3.ExprRef] = None,
-            solution_log_path: Optional[str] = None):
+            solution_log_path: Optional[str] = None,
+            run_log_path: Optional[str] = None):
         self.generator_vars = generator_vars
         self.verifier_vars = verifier_vars
         self.definition_vars = definition_vars
@@ -172,6 +179,10 @@ class Cegis():
         self.generator = MySolver(ctx)
         self.generator.warn_undeclared = False
         self.solution_log_path = solution_log_path
+        self.run_log_path = run_log_path
+
+        silent_remove_file(self.solution_log_path)
+        silent_remove_file(self.run_log_path)
 
     def sim_known_solution_against_cex(self, cex: z3.ModelRef):
         simulator = MySolver()
@@ -590,6 +601,24 @@ class Cegis():
         return log_proved_solution(
             model, self.generator_vars, self.solution_log_path)
 
+    def log_iteration(self, itr):
+        if(self.run_log_path is None):
+            return
+        run_entry = {
+            'timestamp': round(time.time(), 3),
+            'iterations': itr,
+            'counterexamples': self._n_counter_examples,
+            'solutions': self._n_proved_solutions,
+            'generator_checks': self.generator.num_checks,
+            'generator_time': round(self.generator.total_check_time, 3),
+            'verifier_main_checks': self.verifier.num_checks,
+            'verifier_main_time': round(self.verifier.total_check_time, 3),
+        }
+        run_df = pd.DataFrame([run_entry])
+        write_header = not os.path.exists(self.run_log_path)
+        run_df.to_csv(self.run_log_path, mode='a',
+                      header=write_header, index=False)
+
     def init_verifier(self):
         self.verifier = MySolver(self.ctx)
         self.verifier.warn_undeclared = False
@@ -606,6 +635,7 @@ class Cegis():
             logger.info("Iteration: {} ({} solution, {} counterexamples)"
                         .format(itr, len(self.solutions),
                                 len(self.counter_examples)))
+            self.log_iteration(itr)
 
             # Generator
             self.check_known_solution()
