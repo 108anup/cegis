@@ -156,18 +156,18 @@ class MultiCegis(Cegis):
         if(self.run_log_path is None):
             return
         run_entry = {
-            'timestamp': round(time.time(), 3),
+            'timestamp': time.time(),
             'iterations': itr,
             'counterexamples': self._n_counter_examples,
             'solutions': self._n_proved_solutions,
             'generator_checks': self.generator.num_checks,
-            'generator_time': round(self.generator.total_check_time, 3),
+            'generator_time': self.generator.total_check_time,
         }
         for i, vs in enumerate(self.verifier_structs):
             _v = self.verifiers[i]
             name = vs.verifier_name
             run_entry[f'verifier_{name}_checks'] = _v.num_checks
-            run_entry[f'verifier_{name}_time'] = round(_v.total_check_time, 3)
+            run_entry[f'verifier_{name}_time'] = _v.total_check_time
 
         run_df = pd.DataFrame([run_entry])
         write_header = not os.path.exists(self.run_log_path)
@@ -184,13 +184,15 @@ class MultiCegis(Cegis):
             _verifier = self.verifiers[vsn]
             _verifier.add(z3.And(vs.definitions, z3.Not(vs.specification)))
 
-        itr = 1
+        itr = 0
         while(True):
+            itr += 1
+            self.log_iteration(itr)
+
             logger.info("-"*80)
             logger.info("Iteration: {} ({} solution, {} counterexamples)"
                         .format(itr, len(self.solutions),
                                 len(self.counter_examples)))
-            self.log_iteration(itr)
 
             # Generator
             # TODO: not refactored.
@@ -245,4 +247,5 @@ class MultiCegis(Cegis):
 
                 self.remove_solution(candidate_qres.model)
 
-            itr += 1
+        itr += 1
+        self.log_iteration(itr)

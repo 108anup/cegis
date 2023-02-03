@@ -605,14 +605,14 @@ class Cegis():
         if(self.run_log_path is None):
             return
         run_entry = {
-            'timestamp': round(time.time(), 3),
+            'timestamp': time.time(),
             'iterations': itr,
             'counterexamples': self._n_counter_examples,
             'solutions': self._n_proved_solutions,
             'generator_checks': self.generator.num_checks,
-            'generator_time': round(self.generator.total_check_time, 3),
+            'generator_time': self.generator.total_check_time,
             'verifier_main_checks': self.verifier.num_checks,
-            'verifier_main_time': round(self.verifier.total_check_time, 3),
+            'verifier_main_time': self.verifier.total_check_time,
         }
         run_df = pd.DataFrame([run_entry])
         write_header = not os.path.exists(self.run_log_path)
@@ -629,13 +629,15 @@ class Cegis():
         self.generator.add(self.search_constraints)
         self.init_verifier()
 
-        itr = 1
+        itr = 0
         while(True):
+            itr += 1
+            self.log_iteration(itr)
+
             logger.info("-"*80)
             logger.info("Iteration: {} ({} solution, {} counterexamples)"
                         .format(itr, len(self.solutions),
                                 len(self.counter_examples)))
-            self.log_iteration(itr)
 
             # Generator
             self.check_known_solution()
@@ -692,4 +694,5 @@ class Cegis():
                     counter_qres.model, self.verifier_vars,
                     self.definition_vars, self.ctx, self._n_counter_examples)
 
-            itr += 1
+        itr += 1
+        self.log_iteration(itr)
