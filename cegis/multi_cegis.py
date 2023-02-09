@@ -10,7 +10,7 @@ import z3
 from pyz3_utils import MySolver
 from pyz3_utils.common import GlobalConfig
 
-from cegis import Cegis, get_unsat_core, remove_solution, silent_remove_file
+from cegis import Cegis, get_unsat_core, remove_solution, sanity_checks, silent_remove_file
 
 from .util import tcolor
 
@@ -177,7 +177,14 @@ class MultiCegis(Cegis):
     def is_last_vsn(self, vsn: int):
         return vsn == self.n_verifiers - 1
 
+    def sanity_checks(self):
+        for vs in self.verifier_structs:
+            sanity_checks(self.generator_vars, vs.verifier_vars,
+                          vs.definition_vars, self.search_constraints,
+                          vs.definitions, vs.specification)
+
     def run(self):
+        # self.sanity_checks()
         start = time.time()
         self.generator.add(self.search_constraints)
         for vsn, vs in enumerate(self.verifier_structs):

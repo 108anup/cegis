@@ -28,6 +28,53 @@ GetGeneratorViewType = Callable[
     [z3.ModelRef, List[z3.ExprRef], List[z3.ExprRef], int], str]
 
 
+def extract_vars(e: z3.ExprRef) -> List[z3.ExprRef]:
+    if e.children() == []:
+        if str(e)[:4] == "Var(":
+            return []
+        elif type(e) == z3.ArithRef or type(e) == z3.BoolRef\
+                or type(e) == z3.FuncDeclRef:
+            if(str(e) in ["True", "False", "And", "Or"]):
+                return []
+            return [e]
+        else:
+            return []
+    else:
+        res = []
+        for x in e.children():
+            res += extract_vars(x)
+        return res
+
+
+def sanity_checks(generator_vars: List[z3.ExprRef],
+                  verifier_vars: List[z3.ExprRef],
+                  definition_vars: List[z3.ExprRef],
+                  search_constraints: z3.ExprRef,
+                  definitions: z3.ExprRef, specification: z3.ExprRef):
+    start = time.time()
+    logger.info("Performing sanity checks")
+    s_vvars = set(verifier_vars)
+    s_dvars = set(definition_vars)
+    s_gvars = set(generator_vars)
+
+    s_specvars = set(extract_vars(specification))
+    s_defvars = set(extract_vars(definitions))
+    s_searchvars = set(extract_vars(search_constraints))
+
+    assert s_searchvars <= s_gvars
+    assert s_defvars <= s_dvars.union(s_gvars).union(s_vvars)
+    assert s_specvars <= s_vvars.union(s_gvars).union(s_dvars)
+
+    assert s_dvars <= s_defvars
+    assert s_vvars <= s_specvars.union(s_defvars)
+    assert s_gvars <= s_specvars.union(s_defvars)
+
+    assert len(s_vvars.intersection(s_gvars)) == 0
+    assert len(s_vvars.intersection(s_dvars)) == 0
+    assert len(s_gvars.intersection(s_dvars)) == 0
+    logger.info(f"Sanity checks took {time.time() - start:.3f} seconds")
+
+
 def substitute_values(var_list: List[z3.ExprRef], model: z3.ModelRef,
                       name_template: str, ctx: z3.Context,
                       model_completion: bool = False) -> z3.ExprRef:
@@ -624,7 +671,18 @@ class Cegis():
         self.verifier.warn_undeclared = False
         self.verifier.add(z3.And(self.definitions, z3.Not(self.specification)))
 
+    def sanity_checks(self):
+        """
+        Use this mostly when updating the query. For minor changes to the query,
+        it is not necessary to run this. This can take some time.
+        """
+        sanity_checks(self.generator_vars,
+                      self.verifier_vars,
+                      self.definition_vars, self.search_constraints,
+                      self.definitions, self.specification)
+
     def run(self):
+        # self.sanity_checks()
         start = time.time()
         self.generator.add(self.search_constraints)
         self.init_verifier()
