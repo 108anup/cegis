@@ -213,7 +213,8 @@ class Cegis():
             definitions: z3.ExprRef, specification: z3.ExprRef,
             ctx: z3.Context, known_solution: Optional[z3.ExprRef] = None,
             solution_log_path: Optional[str] = None,
-            run_log_path: Optional[str] = None):
+            run_log_path: Optional[str] = None,
+            incremental_verify: bool = False):
         self.generator_vars = generator_vars
         self.verifier_vars = verifier_vars
         self.definition_vars = definition_vars
@@ -222,6 +223,7 @@ class Cegis():
         self.search_constraints = search_constraints
         self.ctx = ctx
         self.known_solution = known_solution
+        self.incremental_verify = incremental_verify
 
         self.generator = MySolver(ctx)
         self.generator.warn_undeclared = False
@@ -378,9 +380,12 @@ class Cegis():
             self, candidate_solution: z3.ModelRef) -> QueryResult:
 
         def sf_get_cex():
+            if(not self.incremental_verify):
+                self.init_verifier()
             return self.get_counter_example(
                 self.verifier, candidate_solution,
-                self.generator_vars, self.ctx, self.run_verifier)
+                self.generator_vars, self.ctx, self.run_verifier,
+                self.incremental_verify)
 
         def reset_verifier():
             return self.init_verifier()
@@ -392,8 +397,9 @@ class Cegis():
     def get_counter_example(
             verifier: MySolver, candidate_solution: z3.ModelRef,
             generator_vars: List[z3.ExprRef], ctx: z3.Context,
-            run_verifier: RunVerifierType):
-        verifier.push()
+            run_verifier: RunVerifierType, incremental_verify: bool = False):
+        if (incremental_verify):
+            verifier.push()
 
         # Encode candidate solution
         candidate_solution_constr = substitute_values(
@@ -434,7 +440,8 @@ class Cegis():
         #     import ipdb; ipdb.set_trace()
 
         # TODO(108anup): Consider using reset here as it gets rid of all pushes.
-        verifier.pop()
+        if (incremental_verify):
+            verifier.pop()
         return QueryResult(sat, model, None)
 
     @staticmethod

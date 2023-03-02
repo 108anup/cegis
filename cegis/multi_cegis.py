@@ -73,12 +73,14 @@ class MultiCegis(Cegis):
             verifier_structs: List[VerifierStruct],
             ctx: z3.Context, known_solution: Optional[z3.ExprRef] = None,
             solution_log_path: Optional[str] = None,
-            run_log_path: Optional[str] = None,):
+            run_log_path: Optional[str] = None,
+            incremental_verify: bool = False):
         self.generator_vars = generator_vars
         self.critical_generator_vars = critical_generator_vars
         self.search_constraints = search_constraints
         self.ctx = ctx
         self.known_solution = known_solution
+        self.incremental_verify = incremental_verify
 
         # Get rid of old API to prevent accidental use Unfortunately this only
         # helps at runtime. pyright still thinks these attributes are defined
@@ -230,7 +232,8 @@ class MultiCegis(Cegis):
                 _verifier = self.verifiers[vsn]
                 counter_qres = self.get_counter_example(
                     _verifier, candidate_qres.model,
-                    self.generator_vars, self.ctx, vs.run_verifier)
+                    self.generator_vars, self.ctx, vs.run_verifier,
+                    self.incremental_verify)
 
                 if(counter_qres.is_sat()):
                     assert counter_qres.model is not None
