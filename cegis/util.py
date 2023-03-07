@@ -180,6 +180,14 @@ def get_raw_value(expr: z3.ExprRef):
         return np.nan
 
 
+def get_model_value_list(model: z3.ModelRef, l: List[z3.ExprRef]):
+    ret = []
+    for var in l:
+        val = get_raw_value(model.eval(var))
+        ret.append(val)
+    return ret
+
+
 def write_solver(solver: MySolver, filename: str):
     with open(filename + '.smt2', 'w') as f:
         f.write(solver.to_smt2())
