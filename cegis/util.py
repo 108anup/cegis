@@ -141,7 +141,69 @@ def optimize_var(s: MySolver, variable: z3.ExprRef, lo, hi, eps, maximize=True):
         sat_value_1 = 'sat'
         sat_value_3 = 'unsat'
 
+    logger.debug(f"Optimizing {variable.decl().name()}.")
+
+    binary_search = BinarySearch(lo, hi, eps)
+    while True:
+        pt = binary_search.next_pt()
+        if(pt is None):
+            break
+
+        logger.debug(f"Optimizing {variable.decl().name()}. Trying value: {pt}")
+        s.push()
+        s.add(variable == pt)
+        sat = s.check()
+        s.pop()
+
+        if(str(sat) == sat_value_1):
+            binary_search.register_pt(pt, 1)
+        elif str(sat) == "unknown":
+            binary_search.register_pt(pt, 2)
+        else:
+            assert str(sat) == sat_value_3, f"Unknown value: {str(sat)}"
+            binary_search.register_pt(pt, 3)
+
+    return binary_search.get_bounds()
+
+
+def optimize_var_nopushpop(
+    s: MySolver, variable: z3.ExprRef, lo, hi, eps, maximize=True):
+    # This is same as the non fast, it just does not use push/pop
+    # This allows solver to make use of better preprocessing techniques.
+    """
+    WLOG, assume we are maximizing, Find the maximum output value of input
+    variable in the range [lo, hi] (with accuracy of eps), such that the formula
+    checked by solver s is unsatisfiable.
+
+    To minimize set maximize = False.
+
+    If we want optimum value such that s is satisfiable, just reverse polarity of maximize.
+    """
+
+    # Assert that input is function application with zero
+    assert len(variable.children()) == 0
+    assert variable.num_args() == 0
+
+    """
+    The binary search process assumes lo, hi map to 1 1 1... 2 2 2... 3 3 3...
+    So if we want maximum value for unsat, lo/1 must be registered unsat.
+    Otherwise, if lo is sat then maximum value is less than lo - eps.
+    """
+    sat_value_1 = 'unsat'
+    sat_value_3 = 'sat'
+
+    if(not maximize):
+        sat_value_1 = 'sat'
+        sat_value_3 = 'unsat'
+
     logger.debug("Optimizing {}.".format(variable.decl().name()))
+
+    def create_verifier():
+        verifier = MySolver()
+        verifier.warn_undeclared = False
+        for assertion in s.assertions():
+            verifier.add(assertion)
+        return verifier
 
     binary_search = BinarySearch(lo, hi, eps)
     while True:
@@ -150,10 +212,9 @@ def optimize_var(s: MySolver, variable: z3.ExprRef, lo, hi, eps, maximize=True):
             break
 
         logger.debug("Optimizing {}. Trying value: {}".format(variable.decl().name(), pt))
-        s.push()
-        s.add(variable == pt)
-        sat = s.check()
-        s.pop()
+        verifier = create_verifier()
+        verifier.add(variable == pt)
+        sat = verifier.check()
 
         if(str(sat) == sat_value_1):
             binary_search.register_pt(pt, 1)
