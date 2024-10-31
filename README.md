@@ -57,22 +57,33 @@ the definitions, the CEGIS loop may output results that you think are incorrect
 (because your specification in code is different from the specification in your
 head).
 
-## How you may know if your definitions are incorrect.
-1. Candidate solution repeats. The constraints added to the generator don't
-    remove a prior solution attempt. Potentially not substituting all verifier
-    decisions, i.e., there are variabels which should be verfier variables but
-    are not.
+## How you may know if your definitions/specification is incorrect.
+1. Candidate solution repeats. This may happen when the constraints added to
+    the generator don't remove a prior solution attempt. This happens
+    potentially when not all verifier decisions are provided to the generator
+    and are instead left as symbols, i.e., there are variables (e.g., in
+    definitions) which should be annotated as verifier variables but are not.
 
-2. Counter example repeats. The generator already should have checked the
-    counter example. But it seems like it did not. This will happen if the
-    generator does not know the counter example properly.
+2. Counterexample repeats. The generator already should have checked the
+    counterexample in a previous CEGIS iteration. If this happens, then there
+    are at least two possibilities:
 
-    If views differ then, the definitions are perhaps not setup properly.
+    The views of how $\phi$ evaluates for a given $x$ and $y$ differ. This
+    signals that the definitions are perhaps not setup properly, i.e., the
+    generator and verifier are picking different assignments to $d$ for the
+    same $x$ and $y$. This should not be allowed by the definitions.
 
-    If no views differ then perhaps: there are
-    extra variables that generator can exploit to satisfy specificaion.
+    If the views do not differ then perhaps there are extra variables (not
+    marked as verifier, generator, or definitions) that are referred to in the
+    specification that the generator can exploit to satisfy specification.
 
-3. Known solution removed from search space. You know a solution should work,
-   but the cegis loop does not output it. This happens if the generator is
-   forced to satisfy arbitrary definitions (extra definitions, or some variable
-   is wrongly put as a definition var.)
+3. Known solution removed from search space. If you know a solution should
+   work, but the CEGIS loop does not output it. This happens if the generator
+   is forced to satisfy arbitrary definitions (extra definitions, or some
+   variable is wrongly put as a definition variable.)
+
+The code does trigger runtime errors if these issues are hit.
+
+If you do not want to worry about these issues, just specify all existential
+variables as generator variables, all universal variables as verifier
+variables, and do not use definition variables or definitions.
