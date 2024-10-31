@@ -28,6 +28,7 @@ $$
 $$
 
 For a given candidate solution $x^*$ The verifier solves:
+
 $$
 \lnot \phi(x^*, y)
 $$
