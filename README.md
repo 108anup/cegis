@@ -22,10 +22,15 @@ this counterexample to refine its candidate solution.
 
 To propose a candidate solution, after obtaining a set of counterexamples $Y$,
 the generator solves:
-$$ \bigwedge_{y^* \in Y} \phi(x, y^*) $$
+
+$$
+\bigwedge_{y^* \in Y} \phi(x, y^*)
+$$
 
 For a given candidate solution $x^*$ The verifier solves:
-$$ \lnot \phi(x^*, y) $$
+$$
+\lnot \phi(x^*, y)
+$$
 
 We call the variables in $x$ as generator variables and the variables in $y$ as
 the verifier variables.
